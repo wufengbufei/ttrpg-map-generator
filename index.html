@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中文 TTRPG 地图生成器</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .home-wrap { max-width: 920px; margin: 0 auto; padding: 20px 24px 60px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; margin-top: 24px; }
+  .card {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 6px 16px var(--shadow);
+    text-decoration: none;
+    color: var(--ink);
+    transition: transform .15s ease, box-shadow .15s ease;
+    display: block;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 10px 22px var(--shadow); }
+  .card.disabled { opacity: 0.45; pointer-events: none; }
+  .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 0.9rem; line-height: 1.5; }
+  .badge {
+    display: inline-block; font-size: 0.72rem; padding: 2px 8px; border-radius: 999px;
+    background: var(--accent); color: #fff; margin-bottom: 8px;
+  }
+  .badge.soon { background: #8a7a5c; }
+  footer { text-align: center; color: #cbbfa2; font-size: 0.8rem; padding: 20px; }
+</style>
+</head>
+<body>
+<div class="site-header">
+  <h1>中文 TTRPG 地图生成器</h1>
+  <p>跑团用的地图/场景随机生成工具合集 · 纯前端 · 参考 watabou.github.io</p>
+</div>
+<div class="home-wrap">
+  <div class="grid">
+    <a class="card" href="generators/dungeon/index.html">
+      <span class="badge">已上线</span>
+      <h2>🗝️ 地牢生成器</h2>
+      <p>随机生成房间、走廊、门与陷阱布局，支持导出 PNG，可直接用于跑团战斗/探索场景。</p>
+    </a>
+    <a class="card disabled" href="#">
+      <span class="badge soon">开发中</span>
+      <h2>🏰 城市生成器</h2>
+      <p>基于 Voronoi 的中世纪奇幻城市布局生成，含城墙、街区、地标。</p>
+    </a>
+    <a class="card disabled" href="#">
+      <span class="badge soon">开发中</span>
+      <h2>🏘️ 村庄生成器</h2>
+      <p>简化版城市生成，适合小型聚落场景。</p>
+    </a>
+    <a class="card disabled" href="#">
+      <span class="badge soon">开发中</span>
+      <h2>🌲 洞穴 / 林间生成器</h2>
+      <p>自然地形生成，适合野外探索场景。</p>
+    </a>
+    <a class="card disabled" href="#">
+      <span class="badge soon">开发中</span>
+      <h2>🌊 海岸生成器</h2>
+      <p>海岸线与沿海地形生成。</p>
+    </a>
+    <a class="card disabled" href="#">
+      <span class="badge soon">开发中</span>
+      <h2>🏠 住所生成器</h2>
+      <p>单体建筑内部房间布局生成。</p>
+    </a>
+  </div>
+</div>
+<footer>纯前端静态站 · 无需登录 · 数据不离开你的浏览器</footer>
+</body>
+</html>

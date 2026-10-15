@@ -1,0 +1,50 @@
+:root {
+  --ink: #2b2016;
+  --ink-soft: #5a4a38;
+  --parchment: #ece0c4;
+  --parchment-dark: #ded0ab;
+  --accent: #8a2c22;
+  --accent-soft: #b85c3a;
+  --line: #c9b888;
+  --panel-bg: #f3e9cf;
+  --shadow: rgba(43, 32, 22, 0.25);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  background: radial-gradient(ellipse at top, #3a2f22, #1d1712 70%);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+a { color: inherit; }
+
+.site-header {
+  padding: 28px 32px 12px;
+  text-align: center;
+  color: var(--parchment);
+}
+
+.site-header h1 {
+  margin: 0 0 6px;
+  font-size: 2rem;
+  letter-spacing: 0.1em;
+}
+
+.site-header p {
+  margin: 0;
+  color: #cbbfa2;
+  font-size: 0.95rem;
+}
+
+.site-header .back-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: var(--accent-soft);
+  text-decoration: none;
+}
+.site-header .back-link:hover { text-decoration: underline; }
