@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>村庄生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .vg-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 860px) {
+    .vg-wrap { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 6px 16px var(--shadow);
+    height: fit-content;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 1.1rem; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; color: var(--ink-soft); }
+  .field input[type=range] { width: 100%; }
+  .field input[type=text] {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fffaf0; font-family: inherit; font-size: 0.9rem;
+  }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--ink-soft); }
+  .check-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  button:hover { background: var(--accent-soft); }
+  button.secondary { background: #8a7a5c; }
+  button.secondary:hover { background: #a6946e; }
+  .canvas-panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 6px 16px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #villageCanvas {
+    max-width: 100%;
+    height: auto;
+    background: #ece0c4;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 12px;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  #buildingInfo {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    max-height: 260px;
+    overflow-y: auto;
+    width: 100%;
+  }
+  #buildingInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .seed-row { display: flex; gap: 6px; }
+  .seed-row input { flex: 1; }
+  .seed-row button { flex: none; padding: 6px 10px; }
+</style>
+</head>
+<body>
+<div class="site-header">
+  <a class="back-link" href="../../index.html">← 返回首页</a>
+  <h1>村庄生成器</h1>
+  <p>随机生成建筑地块 · 道路网络 · 围栏 · 建筑清单</p>
+</div>
+
+<div class="vg-wrap">
+  <div class="panel">
+    <h2>生成参数</h2>
+
+    <div class="field">
+      <label><span>建筑数量</span><span id="valCount">16</span></label>
+      <input type="range" id="buildingCount" min="5" max="40" value="16">
+    </div>
+    <div class="field">
+      <label><span>村庄半径（大小）</span><span id="valRadius">280</span></label>
+      <input type="range" id="villageRadius" min="120" max="360" value="280">
+    </div>
+    <div class="field">
+      <label><span>道路弯曲度</span><span id="valCurve">40%</span></label>
+      <input type="range" id="roadCurve" min="0" max="100" value="40">
+    </div>
+    <div class="field">
+      <label><span>道路密度（额外连接）</span><span id="valDensity">30%</span></label>
+      <input type="range" id="roadDensity" min="0" max="100" value="30">
+    </div>
+    <div class="field">
+      <label class="check-row"><input type="checkbox" id="fenceToggle" checked> 生成围栏 / 栅栏</label>
+    </div>
+
+    <div class="field">
+      <label>随机种子（相同种子 = 相同地图）</label>
+      <div class="seed-row">
+        <input type="text" id="seedInput" placeholder="留空则随机">
+        <button class="secondary" id="randomSeedBtn">🎲</button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="generateBtn">生成村庄</button>
+    </div>
+    <div class="btn-row">
+      <button class="secondary" id="exportPngBtn">导出 PNG</button>
+      <button class="secondary" id="exportTxtBtn">导出清单</button>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:#d8c59a"></i>民居</span>
+      <span><i style="background:#6f5846"></i>铁匠铺</span>
+      <span><i style="background:#c47b45"></i>旅店</span>
+      <span><i style="background:#a6a05f"></i>磨坊</span>
+      <span><i style="background:#8d8396"></i>教堂</span>
+      <span><i style="background:#b5544a"></i>市场</span>
+      <span><i style="background:#9c8455"></i>仓库</span>
+    </div>
+  </div>
+
+  <div class="canvas-panel">
+    <canvas id="villageCanvas" width="900" height="900"></canvas>
+    <div id="buildingInfo"></div>
+  </div>
+</div>
+
+<footer>按建筑编号对照右侧清单，方便跑团时口述描述 · 本地生成，不上传任何数据</footer>
+
+<script src="village.js"></script>
+</body>
+</html>
