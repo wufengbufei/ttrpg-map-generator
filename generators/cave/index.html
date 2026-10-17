@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洞穴 / 林间生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .cv-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .cv-wrap { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 6px 16px var(--shadow);
+    height: fit-content;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.88rem;
+    margin-bottom: 4px;
+    color: var(--ink-soft);
+  }
+  .field input[type=range] { width: 100%; }
+  .field input[type=text], .field select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fffaf0;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 0.9rem;
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  button:hover { background: var(--accent-soft); }
+  button.secondary { background: #8a7a5c; }
+  button.secondary:hover { background: #a6946e; }
+  .seed-row { display: flex; gap: 6px; }
+  .seed-row input { flex: 1; }
+  .seed-row button { flex: none; padding: 6px 10px; }
+  .hint {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+  .canvas-panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 6px 16px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #caveCanvas {
+    max-width: 100%;
+    height: auto;
+    background: #1a130c;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 12px;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  #caveInfo {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    max-height: 220px;
+    overflow-y: auto;
+    width: 100%;
+  }
+  #caveInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  #caveInfo strong { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="site-header">
+  <a class="back-link" href="../../index.html">← 返回首页</a>
+  <h1>洞穴 / 林间生成器</h1>
+  <p>元胞自动机生成有机洞穴 · 可选林间装饰 · 同种子同地图</p>
+</div>
+
+<div class="cv-wrap">
+  <div class="panel">
+    <h2>生成参数</h2>
+
+    <div class="field">
+      <label><span>网格宽度</span><span id="valW">50</span></label>
+      <input type="range" id="gridW" min="24" max="100" value="50">
+    </div>
+    <div class="field">
+      <label><span>网格高度</span><span id="valH">38</span></label>
+      <input type="range" id="gridH" min="20" max="80" value="38">
+    </div>
+    <div class="field">
+      <label><span>初始岩石填充率</span><span id="valFill">47%</span></label>
+      <input type="range" id="rockFill" min="35" max="65" value="47">
+    </div>
+    <div class="field">
+      <label><span>平滑迭代次数</span><span id="valSmooth">4 轮</span></label>
+      <input type="range" id="smoothing" min="0" max="8" value="4">
+    </div>
+    <div class="field">
+      <label><span>装饰物密度（树木 / 碎石）</span><span id="valDecor">12%</span></label>
+      <input type="range" id="decorDensity" min="0" max="40" value="12">
+    </div>
+    <div class="field">
+      <label><span>场景风格</span></label>
+      <select id="sceneStyle">
+        <option value="cave">洞穴（碎石与少量灌木）</option>
+        <option value="forest">林间（树木与灌木）</option>
+      </select>
+      <div class="hint">林间风格会把地面染成苔绿色，并额外生成树木与灌木。</div>
+    </div>
+
+    <div class="field">
+      <label>随机种子（相同种子 = 相同地图）</label>
+      <div class="seed-row">
+        <input type="text" id="seedInput" placeholder="留空则随机">
+        <button class="secondary" id="randomSeedBtn" title="随机种子">🎲</button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="generateBtn">生成洞穴</button>
+    </div>
+    <div class="btn-row">
+      <button class="secondary" id="exportPngBtn">导出 PNG</button>
+      <button class="secondary" id="exportTxtBtn">导出描述</button>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:#2c2116"></i>岩石</span>
+      <span><i style="background:#b7a077"></i>地面</span>
+      <span><i style="background:#526b3a"></i>树木</span>
+      <span><i style="background:#637542"></i>灌木</span>
+      <span><i style="background:#7c7260"></i>碎石</span>
+    </div>
+  </div>
+
+  <div class="canvas-panel">
+    <canvas id="caveCanvas" width="800" height="608"></canvas>
+    <div id="caveInfo"></div>
+  </div>
+</div>
+
+<footer>元胞自动机 + 洪泛连通清理，所有区域都可从主洞穴抵达 · 本地生成，不上传任何数据</footer>
+
+<script src="cave.js"></script>
+</body>
+</html>

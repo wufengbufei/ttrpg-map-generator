@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>住所生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .dw-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 860px) {
+    .dw-wrap { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 6px 16px var(--shadow);
+    height: fit-content;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 1.1rem; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; color: var(--ink-soft); }
+  .field input[type=range] { width: 100%; }
+  .field input[type=text] {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fffaf0; font-family: inherit; font-size: 0.9rem;
+  }
+  .hint { margin: -6px 0 12px; font-size: 0.76rem; color: var(--ink-soft); opacity: 0.85; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  button:hover { background: var(--accent-soft); }
+  button.secondary { background: #8a7a5c; }
+  button.secondary:hover { background: #a6946e; }
+  .canvas-panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 6px 16px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #dwellingCanvas {
+    max-width: 100%;
+    height: auto;
+    background: #ece0c4;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 12px;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  #roomInfo {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    max-height: 320px;
+    overflow-y: auto;
+    width: 100%;
+  }
+  #roomInfo .info-head { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  #roomInfo .info-room { padding: 6px 0; border-bottom: 1px dashed var(--line); line-height: 1.55; }
+  #roomInfo .info-room b { color: var(--ink); }
+  #roomInfo .info-furn { color: var(--accent); }
+  .seed-row { display: flex; gap: 6px; }
+  .seed-row input { flex: 1; }
+  .seed-row button { flex: none; padding: 6px 10px; }
+</style>
+</head>
+<body>
+<div class="site-header">
+  <a class="back-link" href="../../index.html">← 返回首页</a>
+  <h1>住所生成器</h1>
+  <p>单体建筑室内平面图 · 房间分割 · 门与家具布局</p>
+</div>
+
+<div class="dw-wrap">
+  <div class="panel">
+    <h2>生成参数</h2>
+
+    <div class="field">
+      <label><span>建筑尺寸（宽度）</span><span id="valSize">22 格</span></label>
+      <input type="range" id="buildingSize" min="14" max="28" value="22">
+    </div>
+    <p class="hint">高度按约 0.72 比例自动计算</p>
+
+    <div class="field">
+      <label><span>房间数量</span><span id="valRooms">6</span></label>
+      <input type="range" id="roomCount" min="3" max="10" value="6">
+    </div>
+    <p class="hint">空间不足时会自动减少房间，避免出现无法摆放家具的碎房间</p>
+
+    <div class="field">
+      <label><span>L 形复杂度</span><span id="valShape">45%</span></label>
+      <input type="range" id="lShape" min="0" max="100" value="45">
+    </div>
+    <p class="hint">0% 为完整矩形；数值越大，缺角越大</p>
+
+    <div class="field">
+      <label><span>家具密度</span><span id="valFurniture">60%</span></label>
+      <input type="range" id="furnitureDensity" min="0" max="100" value="60">
+    </div>
+
+    <div class="field">
+      <label>随机种子（相同种子 = 相同地图）</label>
+      <div class="seed-row">
+        <input type="text" id="seedInput" placeholder="留空则随机">
+        <button class="secondary" id="randomSeedBtn">🎲</button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="generateBtn">生成住所</button>
+    </div>
+    <div class="btn-row">
+      <button class="secondary" id="exportPngBtn">导出 PNG</button>
+      <button class="secondary" id="exportTxtBtn">导出清单</button>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:#e2cda2"></i>客厅</span>
+      <span><i style="background:#d8c5a8"></i>卧室</span>
+      <span><i style="background:#d9c39a"></i>厨房</span>
+      <span><i style="background:#c9b791"></i>储藏</span>
+      <span><i style="background:#cdd1c2"></i>浴室</span>
+      <span><i style="background:#d5c3a4"></i>书房</span>
+    </div>
+  </div>
+
+  <div class="canvas-panel">
+    <canvas id="dwellingCanvas" width="880" height="660"></canvas>
+    <div id="roomInfo"></div>
+  </div>
+</div>
+
+<footer>房间编号与清单一一对应 · 本地生成，不上传任何数据</footer>
+
+<script src="dwelling.js"></script>
+</body>
+</html>

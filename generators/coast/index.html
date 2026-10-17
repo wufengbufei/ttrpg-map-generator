@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>海岸生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .coast-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 860px) {
+    .coast-wrap { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 6px 16px var(--shadow);
+    height: fit-content;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 1.1rem; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; color: var(--ink-soft); }
+  .field input[type=range] { width: 100%; }
+  .field input[type=text] {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fffaf0; font-family: inherit; font-size: 0.9rem;
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  button:hover { background: var(--accent-soft); }
+  button.secondary { background: #8a7a5c; }
+  button.secondary:hover { background: #a6946e; }
+  .canvas-panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 6px 16px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #coastCanvas {
+    max-width: 100%;
+    height: auto;
+    background: #ece0c4;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 12px;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  #coastInfo {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    max-height: 260px;
+    overflow-y: auto;
+    width: 100%;
+  }
+  #coastInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .seed-row { display: flex; gap: 6px; }
+  .seed-row input { flex: 1; }
+  .seed-row button { flex: none; padding: 6px 10px; }
+  footer { text-align: center; color: #cbbfa2; font-size: 0.8rem; padding: 20px; }
+</style>
+</head>
+<body>
+<div class="site-header">
+  <a class="back-link" href="../../index.html">← 返回首页</a>
+  <h1>海岸生成器</h1>
+  <p>噪声驱动海岸线 · 海陆分割 · 礁石 / 灯塔 / 洞穴 / 沉船等沿海特征点</p>
+</div>
+
+<div class="coast-wrap">
+  <div class="panel">
+    <h2>生成参数</h2>
+
+    <div class="field">
+      <label><span>陆地比例（海平面阈值）</span><span id="valLandRatio">45%</span></label>
+      <input type="range" id="landRatio" min="20" max="80" value="45">
+    </div>
+    <div class="field">
+      <label><span>海岸线曲折度（噪声频率）</span><span id="valComplexity">4 级</span></label>
+      <input type="range" id="coastComplexity" min="1" max="8" value="4">
+    </div>
+    <div class="field">
+      <label><span>地形特征点数量</span><span id="valFeatures">8 处</span></label>
+      <input type="range" id="featureCount" min="0" max="20" value="8">
+    </div>
+
+    <div class="field">
+      <label>随机种子（相同种子 = 相同地图）</label>
+      <div class="seed-row">
+        <input type="text" id="seedInput" placeholder="留空则随机">
+        <button class="secondary" id="randomSeedBtn">🎲</button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="generateBtn">生成海岸</button>
+    </div>
+    <div class="btn-row">
+      <button class="secondary" id="exportPngBtn">导出 PNG</button>
+      <button class="secondary" id="exportTxtBtn">导出清单</button>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:#7e9a94"></i>浅海</span>
+      <span><i style="background:#344c56"></i>深海</span>
+      <span><i style="background:#d8c69b"></i>陆地</span>
+      <span><i style="background:#998557"></i>高地</span>
+    </div>
+    <div class="legend">
+      <span><i style="background:#5b6a6a"></i>礁石</span>
+      <span><i style="background:#a8432f"></i>灯塔</span>
+      <span><i style="background:#4a3b2a"></i>洞穴入口</span>
+      <span><i style="background:#7a5230"></i>沉船残骸</span>
+      <span><i style="background:#b5544a"></i>渔村</span>
+      <span><i style="background:#6e7f4a"></i>盐沼</span>
+    </div>
+  </div>
+
+  <div class="canvas-panel">
+    <canvas id="coastCanvas" width="900" height="900"></canvas>
+    <div id="coastInfo"></div>
+  </div>
+</div>
+
+<footer>相同种子与参数可复现同一张海岸 · 特征编号与清单一一对应 · 本地生成，不上传任何数据</footer>
+
+<script src="coast.js"></script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>城市生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .city-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 860px) {
+    .city-wrap { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 6px 16px var(--shadow);
+    height: fit-content;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 1.1rem; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; color: var(--ink-soft); }
+  .field input[type=range] { width: 100%; }
+  .field input[type=text] {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fffaf0; font-family: inherit; font-size: 0.9rem;
+  }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--ink-soft); }
+  .check-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  button:hover { background: var(--accent-soft); }
+  button.secondary { background: #8a7a5c; }
+  button.secondary:hover { background: #a6946e; }
+  .canvas-panel {
+    background: var(--panel-bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 6px 16px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #cityCanvas {
+    max-width: 100%;
+    height: auto;
+    background: #ece0c4;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 12px;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(43,32,22,0.25); }
+  #blockInfo {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    max-height: 300px;
+    overflow-y: auto;
+    width: 100%;
+  }
+  #blockInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  #blockInfo div:first-child { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  #blockInfo span { font-size: 0.8rem; color: var(--ink-soft); }
+  .seed-row { display: flex; gap: 6px; }
+  .seed-row input { flex: 1; }
+  .seed-row button { flex: none; padding: 6px 10px; }
+</style>
+</head>
+<body>
+<div class="site-header">
+  <a class="back-link" href="../../index.html">← 返回首页</a>
+  <h1>城市生成器</h1>
+  <p>Voronoi 街区 · 放射主干道 · 城墙城门 · 中央广场与地标</p>
+</div>
+
+<div class="city-wrap">
+  <div class="panel">
+    <h2>生成参数</h2>
+
+    <div class="field">
+      <label><span>城市规模（街区数量）</span><span id="valScale">36 个</span></label>
+      <input type="range" id="blockCount" min="12" max="100" value="36">
+    </div>
+    <div class="field">
+      <label><span>放射主干道数量</span><span id="valRoads">6 条</span></label>
+      <input type="range" id="roadCount" min="3" max="12" value="6">
+    </div>
+    <div class="field">
+      <label><span>街区细分密度</span><span id="valSubdiv">5 级</span></label>
+      <input type="range" id="subdivision" min="1" max="10" value="5">
+    </div>
+    <div class="field">
+      <label class="check-row"><input type="checkbox" id="wallToggle" checked> 生成城墙（含城门）</label>
+    </div>
+
+    <div class="field">
+      <label>随机种子（相同种子 = 相同城市）</label>
+      <div class="seed-row">
+        <input type="text" id="seedInput" placeholder="留空则随机">
+        <button class="secondary" id="randomSeedBtn">🎲</button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="generateBtn">生成城市</button>
+    </div>
+    <div class="btn-row">
+      <button class="secondary" id="exportPngBtn">导出 PNG</button>
+      <button class="secondary" id="exportTxtBtn">导出清单</button>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:#c9a97a"></i>道路</span>
+      <span><i style="background:#b98f63"></i>民居屋顶</span>
+      <span><i style="background:#8d8396"></i>大教堂</span>
+      <span><i style="background:#6f5846"></i>领主城堡</span>
+      <span><i style="background:#dfcd9d"></i>中央广场</span>
+      <span><i style="background:#b7a077"></i>城墙</span>
+    </div>
+  </div>
+
+  <div class="canvas-panel">
+    <canvas id="cityCanvas" width="900" height="900"></canvas>
+    <div id="blockInfo"></div>
+  </div>
+</div>
+
+<footer>街区编号可对照 PNG 与 TXT 清单，方便跑团时口述城市方位 · 本地生成，不上传任何数据</footer>
+
+<script src="city.js"></script>
+</body>
+</html>
