@@ -559,7 +559,22 @@ class Dwelling {
     return seen.size === this.rooms.length;
   }
 
-  // ---------- 家具：沿墙优先，避开门口与房间标签 ----------
+  // 床、柜、灶靠墙；桌、毯、椅和装饰要进到房间中部，不能只贴边
+  static wallIcons() {
+    return new Set(['bed', 'fireplace', 'wardrobe', 'shelf', 'stove', 'cabinet', 'coatrack', 'basin', 'tub', 'nightstand']);
+  }
+
+  roomCentroid(room) {
+    let sx = 0;
+    let sy = 0;
+    for (const idx of room.cells) {
+      sx += idx % this.w;
+      sy += (idx / this.w) | 0;
+    }
+    return { x: sx / room.cells.size, y: sy / room.cells.size };
+  }
+
+  // ---------- 家具：靠墙与居中分开摆，避开门口与房间标签 ----------
   placeFurniture() {
     this.furnitureCells = new Set();
     const blocked = new Set();
@@ -586,16 +601,32 @@ class Dwelling {
       if (density <= 0) continue;
       const target = Math.max(2, Math.round(density * Math.max(4, room.area / 5)));
       const defs = ROOM_TYPES[room.type].furniture;
-      const order = defs.concat(['plant', 'stool', 'candle', 'crate', 'barrel']);
+      const wallIcons = Dwelling.wallIcons();
+      const centerKeys = [];
       let placed = 0;
+
+      for (const defKey of defs) {
+        if (placed >= target) break;
+        const def = FURNITURE_DEFS[defKey];
+        if (!def) continue;
+        if (wallIcons.has(def.icon)) {
+          if (this.tryPlaceFurniture(room, def, blocked, 'wall')) placed++;
+        } else if (!centerKeys.includes(defKey)) {
+          centerKeys.push(defKey);
+        }
+      }
+
+      const fillers = centerKeys.concat(['table', 'rug', 'chair', 'plant', 'stool', 'candle', 'crate', 'barrel']);
       let tries = 0;
       let cursor = 0;
-      while (placed < target && tries < order.length * 5) {
-        const def = FURNITURE_DEFS[order[cursor % order.length]];
+      while (placed < target && tries < fillers.length * 6) {
+        const def = FURNITURE_DEFS[fillers[cursor % fillers.length]];
         cursor++;
         tries++;
         if (!def) continue;
-        if (this.tryPlaceFurniture(room, def, blocked)) placed++;
+        const prefer = wallIcons.has(def.icon) ? 'wall' : 'center';
+        if (this.tryPlaceFurniture(room, def, blocked, prefer)) placed++;
+        else if (prefer === 'center' && this.tryPlaceFurniture(room, def, blocked, 'any')) placed++;
       }
     }
   }
@@ -613,7 +644,7 @@ class Dwelling {
     ];
   }
 
-  tryPlaceFurniture(room, def, blocked) {
+  tryPlaceFurniture(room, def, blocked, prefer) {
     const orientations = def.w === def.h
       ? [[def.w, def.h]]
       : [[def.w, def.h], [def.h, def.w]];
@@ -636,7 +667,6 @@ class Dwelling {
           }
           if (!ok) continue;
 
-          // 统计家具矩形与墙/其它房间贴近的边数，靠墙的更优先
           for (let dx = 0; dx < fw; dx++) {
             if (!this.hasCell(x + dx, y - 1) ||
                 this.owner[cellIndex(x + dx, y - 1, this.w)] !== room.id) wallScore++;
@@ -655,9 +685,27 @@ class Dwelling {
     }
     if (!candidates.length) return false;
 
-    const maxScore = candidates.reduce((m, c) => Math.max(m, c.wallScore), 0);
-    const best = candidates.filter(c => c.wallScore >= maxScore - 1);
-    const choice = this.pick(best);
+    const center = this.roomCentroid(room);
+    for (const c of candidates) {
+      const ix = c.x + (c.w - 1) / 2;
+      const iy = c.y + (c.h - 1) / 2;
+      c.dist = Math.hypot(ix - center.x, iy - center.y);
+    }
+
+    let pool;
+    if (prefer === 'center') {
+      const interior = candidates.filter(c => c.wallScore === 0);
+      if (!interior.length) return false;
+      let min = Infinity;
+      for (const c of interior) if (c.dist < min) min = c.dist;
+      pool = interior.filter(c => c.dist <= min + 0.75);
+    } else if (prefer === 'wall') {
+      const maxScore = candidates.reduce((m, c) => Math.max(m, c.wallScore), 0);
+      pool = candidates.filter(c => c.wallScore >= maxScore - 1);
+    } else {
+      pool = candidates;
+    }
+    const choice = this.pick(pool);
 
     for (let dy = 0; dy < choice.h; dy++) {
       for (let dx = 0; dx < choice.w; dx++) {
