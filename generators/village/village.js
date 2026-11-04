@@ -788,55 +788,31 @@ function rectsOverlap(a, b) {
 function drawLabels(ctx, buildings) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const badges = [];
   for (const b of buildings) {
-    const label = String(b.id);
+    const num = String(b.id);
+    ctx.font = `bold 13px ${LABEL_FONT}`;
+    const nw = ctx.measureText(num).width;
     ctx.font = `bold 12px ${LABEL_FONT}`;
-    const tw = ctx.measureText(label).width;
-    const bw = Math.max(16, tw + 8);
-    const bh = 16;
-    const rect = { x: b.x - bw / 2, y: b.y - bh / 2, w: bw, h: bh };
-    badges.push(rect);
-    roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 8);
-    ctx.fillStyle = 'rgba(255,248,232,0.95)';
+    const tw = ctx.measureText(b.type).width;
+    const w = Math.max(36, nw + 12, tw + 14);
+    const h = 32;
+    const x = b.x - w / 2;
+    const y = b.y - h / 2;
+    roundRectPath(ctx, x, y, w, h, 7);
+    ctx.fillStyle = 'rgba(255,248,232,0.96)';
     ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = b.color;
+    ctx.stroke();
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(43,32,22,0.55)';
     ctx.stroke();
     ctx.fillStyle = '#2b2016';
-    ctx.fillText(label, b.x, b.y + 0.5);
-  }
-
-  ctx.font = `12px ${LABEL_FONT}`;
-  const placed = badges.map(r => ({ x: r.x - 2, y: r.y - 2, w: r.w + 4, h: r.h + 4 }));
-  for (const b of buildings) {
-    const text = b.type;
-    const tw = ctx.measureText(text).width;
-    const th = 14;
-    const candidates = [
-      { x: b.x, y: b.y + b.h / 2 + 13 },
-      { x: b.x, y: b.y - b.h / 2 - 13 },
-      { x: b.x + b.w / 2 + tw / 2 + 8, y: b.y },
-      { x: b.x - b.w / 2 - tw / 2 - 8, y: b.y },
-      { x: b.x, y: b.y + b.h / 2 + 28 },
-    ];
-    let chosen = null;
-    for (const c of candidates) {
-      const rect = { x: c.x - tw / 2 - 2, y: c.y - th / 2, w: tw + 4, h: th };
-      if (rect.x < 4 || rect.y < 4 || rect.x + rect.w > CANVAS_SIZE - 4 || rect.y + rect.h > CANVAS_SIZE - 4) continue;
-      if (placed.some(p => rectsOverlap(rect, p))) continue;
-      const blocked = buildings.some(o => o !== b && buildingContains(o, c.x, c.y, 0));
-      if (blocked) continue;
-      chosen = { c, rect };
-      break;
-    }
-    if (!chosen) continue;
-    placed.push(chosen.rect);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(236,224,196,0.95)';
-    ctx.strokeText(text, chosen.c.x, chosen.c.y);
-    ctx.fillStyle = '#2b2016';
-    ctx.fillText(text, chosen.c.x, chosen.c.y);
+    ctx.font = `bold 13px ${LABEL_FONT}`;
+    ctx.fillText(num, b.x, b.y - 7);
+    ctx.font = `bold 12px ${LABEL_FONT}`;
+    ctx.fillStyle = '#4a241c';
+    ctx.fillText(b.type, b.x, b.y + 8);
   }
 }
 

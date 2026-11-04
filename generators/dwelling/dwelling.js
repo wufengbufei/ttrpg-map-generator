@@ -46,6 +46,9 @@ const FURNITURE_DEFS = {
   nightstand: { icon: 'nightstand', label: '柜',   w: 1, h: 1 },
   shelf:      { icon: 'shelf',      label: '书架', w: 2, h: 1 },
   stove:      { icon: 'stove',      label: '灶台', w: 2, h: 1 },
+  plant:      { icon: 'plant',      label: '盆栽', w: 1, h: 1 },
+  stool:      { icon: 'stool',      label: '凳',   w: 1, h: 1 },
+  candle:     { icon: 'candle',     label: '烛台', w: 1, h: 1 },
   crate:      { icon: 'crate',      label: '箱',   w: 1, h: 1 },
   barrel:     { icon: 'barrel',     label: '桶',   w: 1, h: 1 },
   tub:        { icon: 'tub',        label: '浴桶', w: 1, h: 1 },
@@ -129,8 +132,8 @@ class Dwelling {
     this.opts = {
       size: clamp(Math.round(o.size == null ? 22 : o.size), 14, 28),
       roomCount: clamp(Math.round(o.roomCount == null ? 6 : o.roomCount), 1, 10),
-      lShape: clamp(Math.round(o.lShape == null ? 45 : o.lShape), 0, 100),
-      furnitureDensity: clamp(Math.round(o.furnitureDensity == null ? 60 : o.furnitureDensity), 0, 100),
+      lShape: clamp(Math.round(o.lShape == null ? 0 : o.lShape), 0, 100),
+      furnitureDensity: clamp(Math.round(o.furnitureDensity == null ? 75 : o.furnitureDensity), 0, 100),
     };
     this.seed = (seedNum == null ? 1 : seedNum) >>> 0;
     this.rng = mulberry32(this.seed);
@@ -581,13 +584,16 @@ class Dwelling {
 
       const density = this.opts.furnitureDensity / 100;
       if (density <= 0) continue;
-      const target = Math.max(1, Math.round(density * (2 + room.area / 26)));
+      const target = Math.max(2, Math.round(density * Math.max(4, room.area / 5)));
       const defs = ROOM_TYPES[room.type].furniture;
+      const order = defs.concat(['plant', 'stool', 'candle', 'crate', 'barrel']);
       let placed = 0;
-
-      for (const defKey of defs) {
-        if (placed >= target) break;
-        const def = FURNITURE_DEFS[defKey];
+      let tries = 0;
+      let cursor = 0;
+      while (placed < target && tries < order.length * 5) {
+        const def = FURNITURE_DEFS[order[cursor % order.length]];
+        cursor++;
+        tries++;
         if (!def) continue;
         if (this.tryPlaceFurniture(room, def, blocked)) placed++;
       }
@@ -1238,6 +1244,49 @@ function drawFurniture(ctx, item, px, py) {
       ctx.stroke();
       ctx.fillStyle = '#8a2c22';
       ctx.fillRect(px + w / 2 - 9, py + 16, 5, 8);
+      break;
+    }
+    case 'plant': {
+      ctx.strokeStyle = '#6e7f4a';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(px + w / 2, py + h - 6);
+      ctx.lineTo(px + w / 2, py + 8);
+      ctx.moveTo(px + w / 2, py + h * 0.45);
+      ctx.lineTo(px + w * 0.28, py + h * 0.28);
+      ctx.moveTo(px + w / 2, py + h * 0.4);
+      ctx.lineTo(px + w * 0.72, py + h * 0.22);
+      ctx.stroke();
+      ctx.fillStyle = '#6e7f4a';
+      ctx.beginPath();
+      ctx.arc(px + w / 2, py + h * 0.32, Math.min(w, h) * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#a88663';
+      ctx.fillRect(px + w * 0.32, py + h - 10, w * 0.36, 6);
+      break;
+    }
+    case 'stool': {
+      ctx.strokeStyle = '#6b4d33';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(px + 7, py + 7, w - 14, h - 14);
+      ctx.beginPath();
+      ctx.arc(px + w / 2, py + h / 2, Math.min(w, h) * 0.18, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+    case 'candle': {
+      ctx.fillStyle = '#f4e7c8';
+      ctx.fillRect(px + w / 2 - 3, py + h * 0.38, 6, h * 0.4);
+      ctx.strokeStyle = '#8a2c22';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(px + w / 2, py + h * 0.38);
+      ctx.lineTo(px + w / 2, py + h * 0.18);
+      ctx.stroke();
+      ctx.fillStyle = '#d4af37';
+      ctx.beginPath();
+      ctx.arc(px + w / 2, py + h * 0.16, 2.2, 0, Math.PI * 2);
+      ctx.fill();
       break;
     }
     case 'rug': {

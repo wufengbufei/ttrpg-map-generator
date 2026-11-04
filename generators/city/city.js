@@ -1092,6 +1092,17 @@ function labelAnchor(poly, city) {
   return best || fallback || polygonCentroid(poly);
 }
 
+function roundRectPathCity(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
 function drawNumberBadge(ctx, x, y, text, fontSize) {
   ctx.font = `bold ${fontSize}px ${CITY_FONT}`;
   const tw = ctx.measureText(text).width;
@@ -1140,10 +1151,10 @@ function drawBlockLabels(ctx, city) {
 
     if (block.type === '居住区') continue;
 
-    ctx.font = `bold 12px ${CITY_FONT}`;
+    ctx.font = `bold 14px ${CITY_FONT}`;
     const text = block.type;
     const tw = ctx.measureText(text).width;
-    const th = 16;
+    const th = 20;
     const candidates = [];
     if (block.type === '中央广场') {
       for (let i = 0; i < 12; i++) {
@@ -1165,11 +1176,14 @@ function drawBlockLabels(ctx, city) {
       const rect = { x: c.x - tw / 2 - 2, y: c.y - th / 2, w: tw + 4, h: th };
       if (rect.x < 6 || rect.y < 8 || rect.x + rect.w > CANVAS_SIZE - 6 || rect.y + rect.h > CANVAS_SIZE - 8) continue;
       if (block.type !== '中央广场' && !pointInPolygon(c, block.polygon)) continue;
-      if (roadClearanceAt(city, c.x, c.y) < 8) continue;
+      if (roadClearanceAt(city, c.x, c.y) < 7) continue;
       if (placed.some(p => rectsOverlap(rect, p, 2))) continue;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(236,224,196,0.95)';
-      ctx.strokeText(text, c.x, c.y);
+      roundRectPathCity(ctx, rect.x, rect.y, rect.w, rect.h, 6);
+      ctx.fillStyle = 'rgba(255,248,232,0.96)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = block.type === '领主城堡' ? '#6f5846' : block.type === '大教堂' ? '#8d8396' : '#8a6a42';
+      ctx.stroke();
       ctx.fillStyle = '#4a241c';
       ctx.fillText(text, c.x, c.y);
       placed.push(rect);
@@ -1178,14 +1192,98 @@ function drawBlockLabels(ctx, city) {
   }
 }
 
+function sceneryHash(city) {
+  let h = 2166136261;
+  const poly = (city.wall && city.wall.polygon) || city.boundary || [];
+  for (const p of poly) {
+    h ^= Math.round(p.x * 10);
+    h = Math.imul(h, 16777619);
+    h ^= Math.round(p.y * 10);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function drawCountryside(ctx, city) {
+  const edge = (city.wall && city.wall.polygon) || city.boundary;
+  if (!edge || edge.length < 3) return;
+  const rand = mulberry32(sceneryHash(city) ^ 0x51ed);
+  const kind = Math.floor(rand() * 3); // 0 树林为主，1 山峦为主，2 河流为主
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.moveTo(edge[0].x, edge[0].y);
+  for (let i = 1; i < edge.length; i++) ctx.lineTo(edge[i].x, edge[i].y);
+  ctx.closePath();
+  ctx.clip('evenodd');
+
+  ctx.fillStyle = '#d7e0b8';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  if (kind === 2) {
+    ctx.strokeStyle = '#7e9a94';
+    ctx.lineWidth = 16;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    const y0 = 40 + rand() * 80;
+    ctx.moveTo(0, y0);
+    ctx.bezierCurveTo(180, y0 + 70, 320, y0 - 40, CANVAS_SIZE, y0 + 30);
+    ctx.stroke();
+    ctx.strokeStyle = '#9bb7b0';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+
+  const hills = kind === 1 ? 16 : 7;
+  for (let i = 0; i < hills; i++) {
+    const x = 30 + rand() * (CANVAS_SIZE - 60);
+    const y = 24 + rand() * (CANVAS_SIZE - 48);
+    const w = 28 + rand() * 36;
+    const hgt = 16 + rand() * 22;
+    ctx.fillStyle = i % 2 ? '#9a8b6a' : '#8d7d5e';
+    ctx.beginPath();
+    ctx.moveTo(x - w, y);
+    ctx.lineTo(x, y - hgt);
+    ctx.lineTo(x + w * 0.85, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f4efe2';
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y - hgt + 8);
+    ctx.lineTo(x, y - hgt);
+    ctx.lineTo(x + 5, y - hgt + 7);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const trees = kind === 0 ? 140 : 70;
+  for (let i = 0; i < trees; i++) {
+    const x = 16 + rand() * (CANVAS_SIZE - 32);
+    const y = 16 + rand() * (CANVAS_SIZE - 32);
+    const s = 5 + rand() * 6;
+    ctx.fillStyle = rand() > 0.5 ? '#4f6a38' : '#3d552c';
+    ctx.beginPath();
+    ctx.arc(x, y, s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2f4324';
+    ctx.beginPath();
+    ctx.arc(x - s * 0.3, y - s * 0.25, s * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 function renderCity(city, canvas) {
   canvas.width = CANVAS_SIZE;
   canvas.height = CANVAS_SIZE;
   const ctx = canvas.getContext('2d');
 
-  // 羊皮纸底色
+  // 羊皮纸底色，城外再铺树林 / 山峦 / 河流
   ctx.fillStyle = '#ece0c4';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  drawCountryside(ctx, city);
 
   drawBlocks(ctx, city.blocks);
   drawRoads(ctx, city.roads);
