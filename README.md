@@ -1,16 +1,19 @@
 # 中文版 TTRPG 地图生成器
 
-参考 watabou.github.io（Procgen Arcana）做的中文界面 TTRPG 地图生成器网站。
-纯前端静态站（HTML/CSS/JS + Canvas），无需后端，可直接部署到任意静态托管。
+参考 [watabou.github.io](https://watabou.github.io/)（Procgen Arcana）做的中文界面 TTRPG 地图/场景生成器。纯前端静态站（HTML/CSS/JS + Canvas），无需后端。
 
-## 当前进度
+**在线试用**：https://wufengbufei.github.io/ttrpg-map-generator/
 
-- [x] 地牢生成器（`generators/dungeon/`）
-- [ ] 城市生成器
-- [ ] 村庄生成器
-- [ ] 洞穴/林间生成器
-- [ ] 海岸生成器
-- [ ] 住所生成器
+## 生成器
+
+| 生成器 | 路径 | 说明 |
+|---|---|---|
+| 地牢 | `generators/dungeon/` | 房间+走廊+陷阱/宝藏，种子可复现，导出 PNG/TXT |
+| 村庄 | `generators/village/` | 建筑地块+道路网+围栏+树木 |
+| 城市 | `generators/city/` | 街区+城墙+地标 |
+| 洞穴/林间 | `generators/cave/` | 洞穴或林间两种风格 |
+| 海岸 | `generators/coast/` | 海岸线+特征点（灯塔/渔村等） |
+| 住所 | `generators/dwelling/` | 单栋建筑房间布局 |
 
 ## 本地预览
 
@@ -22,8 +25,8 @@ python3 -m http.server 8899
 
 ## 部署
 
-纯静态文件，整个目录上传到任意静态托管（腾讯云 COS+CDN、Nginx 静态目录等）即可，无需 Node/数据库。
+纯静态文件，可挂 GitHub Pages / 腾讯云 COS+CDN 等，无需 Node/数据库。
 
 ## 技术栈
 
-原生 JavaScript + Canvas，无框架、无构建步骤，直接双击/用静态服务器打开即可运行。
+原生 JavaScript + Canvas，无框架、无构建步骤。
