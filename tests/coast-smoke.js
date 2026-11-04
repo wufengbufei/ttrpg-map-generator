@@ -158,17 +158,29 @@ test('特征点数量准确、编号连续、方位与类型合法', () => {
   }
 });
 
-test('特征点均位于陆地一侧的海岸带内', () => {
-  const coast = generateCoast(Object.assign({}, BASE, {
-    featureCount: 12,
-    seed: 5050,
-  }));
-  assert.strictEqual(coast.features.length, 12);
-  for (const f of coast.features) {
-    const idx = f.cellY * 200 + f.cellX;
-    assert.strictEqual(coast.land[idx], 1, '特征 ' + f.id + ' 落在海里');
-    const d = coast.distToSea[idx];
-    assert.ok(d >= 1 && d <= 16, '特征 ' + f.id + ' 离海岸过远：' + d + ' 格');
+test('礁石与沉船在近岸水中，其余特征在陆地海岸带', () => {
+  const waterTypes = new Set(['礁石', '沉船残骸']);
+  for (const seed of [5050, 1, 99, 20261017, 424242]) {
+    const coast = generateCoast(Object.assign({}, BASE, {
+      featureCount: 12,
+      seed,
+    }));
+    assert.strictEqual(coast.features.length, 12, '种子 ' + seed + ' 特征数量不足');
+    let waterCount = 0;
+    for (const f of coast.features) {
+      const idx = f.cellY * 200 + f.cellX;
+      if (waterTypes.has(f.type)) {
+        waterCount++;
+        assert.strictEqual(coast.land[idx], 0, '种子 ' + seed + ' 的' + f.type + ' 落在陆地上');
+        const d = coast.distToLand[idx];
+        assert.ok(d >= 1 && d <= 12, '种子 ' + seed + ' 的' + f.type + ' 离岸过远：' + d + ' 格');
+      } else {
+        assert.strictEqual(coast.land[idx], 1, '种子 ' + seed + ' 的' + f.type + ' 不在陆地');
+        const d = coast.distToSea[idx];
+        assert.ok(d >= 1 && d <= 16, '种子 ' + seed + ' 的' + f.type + ' 离海岸过远：' + d + ' 格');
+      }
+    }
+    assert.ok(waterCount > 0, '种子 ' + seed + ' 应至少有一处礁石或沉船');
   }
 });
 

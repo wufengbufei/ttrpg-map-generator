@@ -407,6 +407,30 @@ function fillBlob(ctx, cx, cy, radius, x, y, salt) {
   ctx.fill();
 }
 
+function touchesFloor(cave, x, y) {
+  return cave.isFloor(x - 1, y) || cave.isFloor(x + 1, y) ||
+    cave.isFloor(x, y - 1) || cave.isFloor(x, y + 1);
+}
+
+// 可玩区域以外是斜线虚空，贴着地面的一圈才是实心墙/密林边界
+function drawVoidField(ctx, w, h, forest) {
+  ctx.fillStyle = forest ? '#0c120b' : '#100e0c';
+  ctx.fillRect(0, 0, w, h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  ctx.clip();
+  ctx.strokeStyle = forest ? 'rgba(186, 198, 140, 0.16)' : 'rgba(210, 190, 150, 0.14)';
+  ctx.lineWidth = 1;
+  for (let i = -h; i < w; i += 11) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + h, h);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function renderCave(cave, canvas) {
   const forest = cave.opts.style === 'forest';
   const theme = forest ? FOREST_THEME : CAVE_THEME;
@@ -416,74 +440,34 @@ function renderCave(cave, canvas) {
   canvas.height = mapH + SCALE_PAD;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = theme.background;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawVoidField(ctx, mapW, mapH + SCALE_PAD, forest);
 
-  // 地形先画在离屏画布上再轻微模糊，把元胞的硬边收成连续的岩壁/树冠
-  const doc = canvas.ownerDocument || (typeof document !== 'undefined' ? document : null);
-  let tctx = ctx;
-  let terrain = null;
-  if (doc) {
-    terrain = doc.createElement('canvas');
-    terrain.width = mapW;
-    terrain.height = mapH;
-    tctx = terrain.getContext('2d');
-    tctx.fillStyle = theme.background;
-    tctx.fillRect(0, 0, mapW, mapH);
+  for (let y = 0; y < cave.h; y++) {
+    for (let x = 0; x < cave.w; x++) {
+      if (cave.isFloor(x, y) || !touchesFloor(cave, x, y)) continue;
+      const px = x * CELL;
+      const py = y * CELL;
+      ctx.fillStyle = forest ? '#143016' : '#3a2e24';
+      ctx.fillRect(px, py, CELL, CELL);
+      ctx.fillStyle = forest ? '#2d5a30' : '#6d5a44';
+      if (cave.isFloor(x, y + 1)) ctx.fillRect(px, py + CELL - 4, CELL, 4);
+      if (cave.isFloor(x, y - 1)) ctx.fillRect(px, py, CELL, 4);
+      if (cave.isFloor(x + 1, y)) ctx.fillRect(px + CELL - 4, py, 4, CELL);
+      if (cave.isFloor(x - 1, y)) ctx.fillRect(px, py, 4, CELL);
+      ctx.strokeStyle = forest ? '#0a1a0c' : '#1a140e';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
+    }
   }
 
   for (let y = 0; y < cave.h; y++) {
     for (let x = 0; x < cave.w; x++) {
-      if (cave.isFloor(x, y)) continue;
-      tctx.fillStyle = theme.rock[1];
-      const jitterX = (tileNoise(x, y, 3) - 0.5) * 2;
-      const jitterY = (tileNoise(x, y, 5) - 0.5) * 2;
-      fillBlob(tctx, (x + 0.5) * CELL + jitterX, (y + 0.5) * CELL + jitterY, CELL * 1.05, x, y, 2);
+      if (!cave.isFloor(x, y)) continue;
+      const cx = (x + 0.5) * CELL;
+      const cy = (y + 0.5) * CELL;
+      ctx.fillStyle = forest ? '#c4b07a' : '#cbb892';
+      fillBlob(ctx, cx, cy, CELL * 0.92, x, y, 6);
     }
-  }
-
-  for (let pass = 0; pass < 2; pass++) {
-    for (let y = 0; y < cave.h; y++) {
-      for (let x = 0; x < cave.w; x++) {
-        if (!cave.isFloor(x, y)) continue;
-        const cx = (x + 0.5) * CELL;
-        const cy = (y + 0.5) * CELL;
-        if (pass === 0) {
-          tctx.fillStyle = theme.shadow;
-          fillBlob(tctx, cx, cy, CELL * 1.08, x, y, 4);
-        } else {
-          tctx.fillStyle = theme.floor[0];
-          fillBlob(tctx, cx, cy, CELL * 0.94, x, y, 6);
-        }
-      }
-    }
-  }
-
-  // 大块淡色晕染，避免地面再出现一格一块的色差
-  for (let i = 0; i < 8; i++) {
-    const x = tileNoise(i, 3, 17) * mapW;
-    const y = tileNoise(i, 8, 19) * mapH;
-    tctx.fillStyle = forest
-      ? (i % 2 ? 'rgba(70,110,50,0.10)' : 'rgba(210,180,110,0.10)')
-      : (i % 2 ? 'rgba(120,90,50,0.10)' : 'rgba(255,236,200,0.10)');
-    tctx.beginPath();
-    tctx.ellipse(
-      x, y,
-      50 + tileNoise(i, 1, 21) * 110,
-      36 + tileNoise(i, 2, 23) * 80,
-      tileNoise(i, 4, 29) * Math.PI,
-      0, Math.PI * 2
-    );
-    tctx.fill();
-  }
-
-  if (terrain) {
-    ctx.save();
-    ctx.filter = 'blur(3.2px)';
-    ctx.drawImage(terrain, 0, 0);
-    ctx.restore();
-    ctx.fillStyle = theme.background;
-    ctx.fillRect(0, mapH, mapW, SCALE_PAD);
   }
 
   if (forest) {
@@ -529,6 +513,11 @@ function renderCave(cave, canvas) {
 
   drawEntrance(ctx, cave);
   drawCaveScale(ctx, mapW, mapH);
+  ctx.font = `12px ${CAVE_FONT}`;
+  ctx.fillStyle = '#e6d7b4';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(forest ? '斜线区域不可通行' : '斜线区域不可通行', mapW - 12, mapH + 22);
 }
 
 function findEntrance(cave) {
@@ -759,8 +748,8 @@ function syncStyleCopy() {
   const forest = document.getElementById('sceneStyle').value === 'forest';
   document.getElementById('generateBtn').textContent = forest ? '生成林间' : '生成洞穴';
   document.getElementById('styleHint').textContent = forest
-    ? '林间风格把不可通行区域画成树冠，空地为草地，并点缀较大的树木与灌木。'
-    : '洞穴风格把不可通行区域画成岩壁，地面为沙土，并点缀碎石与少量灌木。';
+    ? '林间只在空地内可通行。密林边界是实心墙，墙外斜线区域不可进入。'
+    : '洞穴只在沙土地面内可通行。贴地一圈是实心岩壁，岩壁外斜线区域不可进入。';
   document.getElementById('fillLabel').textContent = forest ? '初始树冠填充率' : '初始岩石填充率';
   document.getElementById('decorLabel').textContent = forest ? '装饰物密度（树木 / 灌木）' : '装饰物密度（碎石 / 灌木）';
 }

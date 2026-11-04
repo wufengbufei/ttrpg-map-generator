@@ -60,6 +60,7 @@ const FEATURE_TYPES = {
   '盐沼':     { color: '#6e7f4a', weight: 1, icon: 'marsh' },
 };
 const FEATURE_TYPE_NAMES = Object.keys(FEATURE_TYPES);
+const WATER_FEATURE_TYPES = new Set(['礁石', '沉船残骸']);
 
 // ---------- 值噪声 / 分形噪声 ----------
 // 使用种子化置换表 + 格点随机值，自行实现，不依赖外部库
@@ -124,6 +125,7 @@ class Coast {
     this.heights = new Float32Array(GRID_N);
     this.land = new Uint8Array(GRID_N);
     this.distToSea = new Int16Array(GRID_N);
+    this.distToLand = new Int16Array(GRID_N);
     this.threshold = 0;
     this.landCount = 0;
     this.landRatioActual = 0;
@@ -144,6 +146,7 @@ class Coast {
     this.buildLandMask();
     this.buildCoastline();
     this.computeDistanceToSea();
+    this.computeDistanceToLand();
     this.placeFeatures();
     return this;
   }
@@ -249,7 +252,32 @@ class Coast {
     }
   }
 
-  // 只在陆地一侧、靠近海岸的格子中撒点，先保证间距，再逐级放宽
+  // 从所有陆地格子出发，得到每个海水格子离岸的格数
+  computeDistanceToLand() {
+    const dist = this.distToLand;
+    dist.fill(-1);
+    const queue = new Int32Array(GRID_N);
+    let head = 0;
+    let tail = 0;
+    for (let i = 0; i < GRID_N; i++) {
+      if (this.land[i]) {
+        dist[i] = 0;
+        queue[tail++] = i;
+      }
+    }
+    while (head < tail) {
+      const i = queue[head++];
+      const x = i % GRID_W;
+      const y = (i / GRID_W) | 0;
+      const nd = dist[i] + 1;
+      if (x > 0 && dist[i - 1] === -1) { dist[i - 1] = nd; queue[tail++] = i - 1; }
+      if (x < GRID_W - 1 && dist[i + 1] === -1) { dist[i + 1] = nd; queue[tail++] = i + 1; }
+      if (y > 0 && dist[i - GRID_W] === -1) { dist[i - GRID_W] = nd; queue[tail++] = i - GRID_W; }
+      if (y < GRID_H - 1 && dist[i + GRID_W] === -1) { dist[i + GRID_W] = nd; queue[tail++] = i + GRID_W; }
+    }
+  }
+
+  // 礁石和沉船只放在近岸海水里；灯塔、洞穴、渔村、盐沼留在陆地海岸带
   placeFeatures() {
     const requested = Number.isFinite(this.opts.featureCount)
       ? Math.round(this.opts.featureCount) : 8;
@@ -263,65 +291,32 @@ class Coast {
     const minY = Math.ceil(margin / CELL_H);
     const maxY = Math.floor((COAST_SIZE - margin) / CELL_H);
 
-    const near = [];
-    const anyLand = [];
+    const waterClose = [];
+    const waterAny = [];
+    const landClose = [];
+    const landAny = [];
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
         const i = this.idx(x, y);
-        if (!this.land[i]) continue;
-        const d = this.distToSea[i];
-        const cell = { x, y, d };
-        anyLand.push(cell);
-        if (d >= 1 && d <= 16) near.push(cell);
+        if (this.land[i]) {
+          const d = this.distToSea[i];
+          const cell = { x, y, d };
+          landAny.push(cell);
+          if (d >= 1 && d <= 16) landClose.push(cell);
+        } else {
+          const d = this.distToLand[i];
+          const cell = { x, y, d };
+          if (d >= 1) waterAny.push(cell);
+          if (d >= 1 && d <= 6) waterClose.push(cell);
+        }
       }
     }
 
-    const picked = [];
-    const pickedKeys = new Set();
-    const tryPick = (list, spacing, limit) => {
-      for (const cell of list) {
-        if (picked.length >= limit) return;
-        const key = cell.x + ',' + cell.y;
-        if (pickedKeys.has(key)) continue;
-        const px = (cell.x + 0.5) * CELL_W;
-        const py = (cell.y + 0.5) * CELL_H;
-        let ok = true;
-        for (const p of picked) {
-          if (Math.hypot(px - p.x, py - p.y) < spacing) { ok = false; break; }
-        }
-        if (!ok) continue;
-        picked.push({ x: px, y: py, cellX: cell.x, cellY: cell.y, coastDist: cell.d });
-        pickedKeys.add(key);
-      }
+    const pools = {
+      water: [shuffle(waterClose), shuffle(waterAny)],
+      land: [shuffle(landClose), shuffle(landAny)],
     };
 
-    const shuffledNear = shuffle(near);
-    // 初始间距兼顾图标与中文标签宽度；数量多时逐级放宽
-    for (const spacing of [88, 64, 42, 26]) {
-      tryPick(shuffledNear, spacing, count);
-      if (picked.length >= count) break;
-    }
-
-    if (picked.length < count) {
-      const shuffledAny = shuffle(anyLand);
-      tryPick(shuffledAny, 18, count);
-      // 极端参数下仍不足时逐格补齐；仍限制在留白范围内
-      for (const cell of shuffledAny) {
-        if (picked.length >= count) break;
-        const key = cell.x + ',' + cell.y;
-        if (pickedKeys.has(key)) continue;
-        picked.push({
-          x: (cell.x + 0.5) * CELL_W,
-          y: (cell.y + 0.5) * CELL_H,
-          cellX: cell.x,
-          cellY: cell.y,
-          coastDist: cell.d,
-        });
-        pickedKeys.add(key);
-      }
-    }
-
-    // 加权类型袋：礁石最多，其余类型轮换，避免整张图只有一种特征
     const typeBagAll = [];
     for (const name of FEATURE_TYPE_NAMES) {
       const weight = FEATURE_TYPES[name].weight || 1;
@@ -329,11 +324,45 @@ class Coast {
     }
     const types = [];
     let bag = [];
-    while (types.length < picked.length) {
+    while (types.length < count) {
       if (bag.length === 0) bag = shuffle(typeBagAll);
       types.push(bag.pop());
     }
-    picked.forEach((p, i) => { p.type = types[i]; });
+
+    const picked = [];
+    const pickedKeys = new Set();
+    const takeCell = (water) => {
+      const lists = water ? pools.water : pools.land;
+      for (const spacing of [78, 52, 30, 0]) {
+        for (const list of lists) {
+          for (let i = 0; i < list.length; i++) {
+            const cell = list[i];
+            const key = cell.x + ',' + cell.y;
+            if (pickedKeys.has(key)) continue;
+            const px = (cell.x + 0.5) * CELL_W;
+            const py = (cell.y + 0.5) * CELL_H;
+            let ok = true;
+            for (const p of picked) {
+              if (Math.hypot(px - p.x, py - p.y) < spacing) { ok = false; break; }
+            }
+            if (!ok) continue;
+            list.splice(i, 1);
+            pickedKeys.add(key);
+            return {
+              x: px, y: py, cellX: cell.x, cellY: cell.y, coastDist: cell.d,
+            };
+          }
+        }
+      }
+      return null;
+    };
+
+    for (const type of types) {
+      const spot = takeCell(WATER_FEATURE_TYPES.has(type));
+      if (!spot) continue;
+      spot.type = type;
+      picked.push(spot);
+    }
 
     // 按从上到下、从左到右编号，方便清单与地图对照
     picked.sort((a, b) => (a.y - b.y) || (a.x - b.x));
