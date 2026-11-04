@@ -954,6 +954,11 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     });
     syncLabels();
     generate();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        if (currentCoast) renderCoast(currentCoast, document.getElementById('coastCanvas'));
+      });
+    }
   });
 }
 

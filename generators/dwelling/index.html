@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>住所生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/style.css">
 <style>
   .dw-wrap {
@@ -78,12 +79,8 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
   #roomInfo {
-    margin-top: 16px;
     font-size: 0.85rem;
     color: var(--ink-soft);
-    max-height: 320px;
-    overflow-y: auto;
-    width: 100%;
   }
   #roomInfo .info-head { padding: 4px 0; border-bottom: 1px dashed var(--line); }
   #roomInfo .info-room { padding: 6px 0; border-bottom: 1px dashed var(--line); line-height: 1.55; }
@@ -156,12 +153,14 @@
 
   <div class="canvas-panel">
     <canvas id="dwellingCanvas" width="880" height="660"></canvas>
-    <div id="roomInfo"></div>
+    <p class="scroll-hint" hidden>清单较长，可在框内滚动</p>
+    <div id="roomInfo" class="map-list"></div>
   </div>
 </div>
 
 <footer>房间编号与清单一一对应 · 本地生成，不上传任何数据</footer>
 
+<script src="../../assets/ui.js"></script>
 <script src="dwelling.js"></script>
 </body>
 </html>

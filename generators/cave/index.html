@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>洞穴 / 林间生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/style.css">
 <style>
   .cv-wrap {
@@ -104,12 +105,8 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
   #caveInfo {
-    margin-top: 16px;
     font-size: 0.85rem;
     color: var(--ink-soft);
-    max-height: 220px;
-    overflow-y: auto;
-    width: 100%;
   }
   #caveInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
   #caveInfo strong { color: var(--ink); font-weight: 600; }
@@ -135,7 +132,7 @@
       <input type="range" id="gridH" min="20" max="80" value="38">
     </div>
     <div class="field">
-      <label><span>初始岩石填充率</span><span id="valFill">47%</span></label>
+      <label><span id="fillLabel">初始岩石填充率</span><span id="valFill">47%</span></label>
       <input type="range" id="rockFill" min="35" max="65" value="47">
     </div>
     <div class="field">
@@ -143,7 +140,7 @@
       <input type="range" id="smoothing" min="0" max="8" value="4">
     </div>
     <div class="field">
-      <label><span>装饰物密度（树木 / 碎石）</span><span id="valDecor">12%</span></label>
+      <label><span id="decorLabel">装饰物密度（碎石 / 灌木）</span><span id="valDecor">12%</span></label>
       <input type="range" id="decorDensity" min="0" max="40" value="12">
     </div>
     <div class="field">
@@ -152,7 +149,7 @@
         <option value="cave">洞穴（碎石与少量灌木）</option>
         <option value="forest">林间（树木与灌木）</option>
       </select>
-      <div class="hint">林间风格会把地面染成苔绿色，并额外生成树木与灌木。</div>
+      <div class="hint" id="styleHint">洞穴风格把不可通行区域画成岩壁，地面为沙土，并点缀碎石与少量灌木。</div>
     </div>
 
     <div class="field">
@@ -182,12 +179,14 @@
 
   <div class="canvas-panel">
     <canvas id="caveCanvas" width="800" height="608"></canvas>
-    <div id="caveInfo"></div>
+    <p class="scroll-hint" hidden>清单较长，可在框内滚动</p>
+    <div id="caveInfo" class="map-list"></div>
   </div>
 </div>
 
 <footer>元胞自动机 + 洪泛连通清理，所有区域都可从主洞穴抵达 · 本地生成，不上传任何数据</footer>
 
+<script src="../../assets/ui.js"></script>
 <script src="cave.js"></script>
 </body>
 </html>

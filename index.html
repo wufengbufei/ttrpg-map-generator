@@ -4,31 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>中文 TTRPG 地图生成器</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/style.css">
 <style>
-  .home-wrap { max-width: 920px; margin: 0 auto; padding: 20px 24px 60px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; margin-top: 24px; }
+  .home-wrap { max-width: 980px; margin: 0 auto; padding: 12px 24px 48px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 8px; }
   .card {
     background: var(--panel-bg);
     border: 2px solid var(--line);
-    border-radius: 10px;
-    padding: 20px;
+    border-radius: 12px;
+    padding: 0 0 16px;
     box-shadow: 0 6px 16px var(--shadow);
     text-decoration: none;
     color: var(--ink);
+    overflow: hidden;
     transition: transform .15s ease, box-shadow .15s ease;
     display: block;
   }
   .card:hover { transform: translateY(-3px); box-shadow: 0 10px 22px var(--shadow); }
-  .card.disabled { opacity: 0.45; pointer-events: none; }
-  .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
-  .card p { margin: 0; color: var(--ink-soft); font-size: 0.9rem; line-height: 1.5; }
-  .badge {
-    display: inline-block; font-size: 0.72rem; padding: 2px 8px; border-radius: 999px;
-    background: var(--accent); color: #fff; margin-bottom: 8px;
-  }
-  .badge.soon { background: #8a7a5c; }
-  footer { text-align: center; color: #cbbfa2; font-size: 0.8rem; padding: 20px; }
+  .card h2 { margin: 12px 16px 6px; font-size: 1.2rem; }
+  .card p { margin: 0 16px; color: var(--ink-soft); font-size: 0.9rem; line-height: 1.55; }
+  .thumb { display: block; width: 100%; height: 112px; background: #e4d3ae; }
 </style>
 </head>
 <body>
@@ -39,33 +35,95 @@
 <div class="home-wrap">
   <div class="grid">
     <a class="card" href="generators/dungeon/index.html">
-      <span class="badge">已上线</span>
-      <h2>🗝️ 地牢生成器</h2>
+      <svg class="thumb" viewBox="0 0 320 112" aria-hidden="true">
+        <rect width="320" height="112" fill="#1b140d"/>
+        <rect x="28" y="22" width="70" height="52" fill="#d8c79a"/>
+        <rect x="88" y="40" width="54" height="16" fill="#d8c79a"/>
+        <rect x="126" y="22" width="64" height="58" fill="#d8c79a"/>
+        <rect x="176" y="64" width="18" height="28" fill="#d8c79a"/>
+        <rect x="176" y="78" width="92" height="16" fill="#d8c79a"/>
+        <rect x="250" y="36" width="48" height="58" fill="#d8c79a"/>
+        <rect x="86" y="40" width="10" height="16" fill="#8a5a2b"/>
+        <circle cx="58" cy="48" r="7" fill="#b23a2a"/>
+        <rect x="268" y="58" width="16" height="12" rx="2" fill="#d4af37"/>
+      </svg>
+      <h2>地牢生成器</h2>
       <p>随机生成房间、走廊、门与陷阱布局，支持导出 PNG，可直接用于跑团战斗/探索场景。</p>
     </a>
     <a class="card" href="generators/city/index.html">
-      <span class="badge">已上线</span>
-      <h2>🏰 城市生成器</h2>
+      <svg class="thumb" viewBox="0 0 320 112" aria-hidden="true">
+        <rect width="320" height="112" fill="#e7d5ae"/>
+        <circle cx="160" cy="58" r="46" fill="none" stroke="#8a6a42" stroke-width="6"/>
+        <circle cx="160" cy="58" r="16" fill="#dfcd9d" stroke="#7a5a3e" stroke-width="2"/>
+        <path d="M160 18v28M160 70v28M118 58H28M202 58h90M128 30 146 48M174 68 196 90M128 86l18-18M174 48l22-20" stroke="#c9a97a" stroke-width="6" stroke-linecap="round"/>
+        <rect x="96" y="40" width="16" height="12" fill="#b98f63" transform="rotate(-8 104 46)"/>
+        <rect x="198" y="36" width="18" height="14" fill="#a8795a"/>
+        <rect x="200" y="72" width="14" height="12" fill="#8d8396"/>
+        <rect x="118" y="74" width="16" height="11" fill="#6f5846"/>
+      </svg>
+      <h2>城市生成器</h2>
       <p>基于 Voronoi 的中世纪奇幻城市布局生成，含城墙、街区、地标。</p>
     </a>
     <a class="card" href="generators/village/index.html">
-      <span class="badge">已上线</span>
-      <h2>🏘️ 村庄生成器</h2>
+      <svg class="thumb" viewBox="0 0 320 112" aria-hidden="true">
+        <rect width="320" height="112" fill="#ece0c4"/>
+        <ellipse cx="160" cy="60" rx="108" ry="42" fill="#dfcd9d"/>
+        <path d="M70 62h180" stroke="#c9a97a" stroke-width="7" stroke-linecap="round"/>
+        <path d="M160 28v68" stroke="#c9a97a" stroke-width="6" stroke-linecap="round"/>
+        <path d="M78 48c40 10 80-8 164 6" fill="none" stroke="#5c412c" stroke-width="2" stroke-dasharray="2 4"/>
+        <path d="M92 78h22l-11-16z" fill="#c47b45"/>
+        <rect x="98" y="78" width="10" height="8" fill="#efe2c4"/>
+        <path d="M150 70h26l-13-18z" fill="#8d8396"/>
+        <rect x="158" y="70" width="10" height="8" fill="#efe2c4"/>
+        <path d="M206 52h20l-10-14z" fill="#6f5846"/>
+        <rect x="212" y="52" width="8" height="7" fill="#efe2c4"/>
+        <circle cx="64" cy="40" r="7" fill="#6e7f4a"/>
+        <circle cx="250" cy="36" r="8" fill="#5c6b3e"/>
+        <circle cx="246" cy="86" r="6" fill="#6e7f4a"/>
+      </svg>
+      <h2>村庄生成器</h2>
       <p>随机生成建筑地块、道路网络与围栏，导出 PNG 地图和建筑清单，适合小型聚落场景。</p>
     </a>
     <a class="card" href="generators/cave/index.html">
-      <span class="badge">已上线</span>
-      <h2>🌲 洞穴 / 林间生成器</h2>
+      <svg class="thumb" viewBox="0 0 320 112" aria-hidden="true">
+        <rect width="320" height="112" fill="#1a130c"/>
+        <path d="M40 20c30 8 24 40 8 52 28-6 40 16 28 32 36-4 70 10 78-8 20 18 48 8 70-6 8 16 40 22 62 4 6-28-8-36 4-58-22-6-18-24-36-22-10-16-40-8-52 6-22-20-58-16-78 8-28-18-62-4-84 2z" fill="#c4b08a"/>
+        <path d="M210 18c18 20 8 36-6 40 16 8 28 28 10 42-22 6-40-8-36-24-16 4-28-20-12-36 4-16 28-28 44-22z" fill="#7f8f52"/>
+        <circle cx="118" cy="58" r="8" fill="#5b5344"/>
+        <circle cx="250" cy="48" r="10" fill="#3d5a35"/>
+        <circle cx="268" cy="62" r="7" fill="#4e6b38"/>
+        <text x="78" y="52" fill="#f6edd4" font-size="11" font-family="serif">入口</text>
+      </svg>
+      <h2>洞穴 / 林间生成器</h2>
       <p>元胞自动机生成有机洞穴与连通地形，可叠加树木、灌木和碎石装饰，支持导出 PNG 与地形描述。</p>
     </a>
     <a class="card" href="generators/coast/index.html">
-      <span class="badge">已上线</span>
-      <h2>🌊 海岸生成器</h2>
+      <svg class="thumb" viewBox="0 0 320 112" aria-hidden="true">
+        <rect width="320" height="112" fill="#d8c69b"/>
+        <path d="M0 70c40-20 60 16 100 4s50-28 90-8 70 6 130-16v62H0z" fill="#7e9a94"/>
+        <path d="M0 92c50-8 80 10 130 0s70-6 190 8v12H0z" fill="#344c56"/>
+        <circle cx="70" cy="40" r="10" fill="#998557"/>
+        <path d="M210 28v22" stroke="#a8432f" stroke-width="3"/>
+        <path d="M202 32h16l-8-10z" fill="#f4e7c4"/>
+        <path d="M250 78l8 6-14 2z" fill="#7a5230"/>
+        <rect x="40" y="86" width="36" height="3" fill="#2b2016"/>
+      </svg>
+      <h2>海岸生成器</h2>
       <p>随机生成海岸线与沿海地形，标注礁石、灯塔、洞穴入口、沉船残骸等特征点，支持导出 PNG 与清单。</p>
     </a>
     <a class="card" href="generators/dwelling/index.html">
-      <span class="badge">已上线</span>
-      <h2>🏠 住所生成器</h2>
+      <svg class="thumb" viewBox="0 0 320 112" aria-hidden="true">
+        <rect width="320" height="112" fill="#ece0c4"/>
+        <rect x="46" y="18" width="150" height="76" fill="#e2cda2" stroke="#3a2b1d" stroke-width="4"/>
+        <rect x="196" y="18" width="78" height="40" fill="#d8c5a8" stroke="#3a2b1d" stroke-width="4"/>
+        <rect x="196" y="58" width="78" height="36" fill="#d9c39a" stroke="#3a2b1d" stroke-width="4"/>
+        <path d="M46 58h150M196 58h78" stroke="#5a4530" stroke-width="3"/>
+        <rect x="70" y="36" width="28" height="14" rx="2" fill="#9a6b4f"/>
+        <rect x="214" y="28" width="22" height="16" rx="2" fill="#a88663"/>
+        <rect x="214" y="70" width="26" height="12" rx="2" fill="#5f5a50"/>
+        <text x="118" y="40" fill="#2b2016" font-size="11" font-family="serif">1 客厅</text>
+      </svg>
+      <h2>住所生成器</h2>
       <p>单体建筑室内平面图生成，含矩形/L 形轮廓、房间与门、家具布置，导出 PNG 和清单。</p>
     </a>
   </div>

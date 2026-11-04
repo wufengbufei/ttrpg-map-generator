@@ -23,6 +23,17 @@ python3 -m http.server 8899
 # 浏览器打开 http://127.0.0.1:8899/
 ```
 
+冒烟测试（不依赖浏览器，覆盖种子复现与几何约束）：
+
+```bash
+node tests/cave.smoke.test.js
+node tests/dwelling.test.js
+node tests/coast-smoke.js
+node generators/city/city.smoke.test.js
+```
+
+页面上的中文使用自托管的 Noto Serif SC 子集（`assets/fonts/`）。地图绘制在 Canvas 里，需要用上面的本地预览看村庄围栏、洞穴/林间边缘、城市屋顶和地牢比例尺。
+
 ## 部署
 
 纯静态文件，可挂 GitHub Pages / 腾讯云 COS+CDN 等，无需 Node/数据库。

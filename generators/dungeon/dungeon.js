@@ -146,12 +146,42 @@ class Dungeon {
       path.push(...this.vLine(y1, y2, x1));
       path.push(...this.hLine(x1, x2, y2));
     }
-    for (const [x, y] of path) {
+    for (let i = 0; i < path.length; i++) {
+      const [x, y] = path[i];
       if (this.get(x, y) === EMPTY) this.set(x, y, FLOOR);
+      let horizontal = true;
+      if (i + 1 < path.length) horizontal = path[i + 1][1] === y;
+      else if (i > 0) horizontal = path[i - 1][1] === y;
+      if (horizontal) {
+        this.tryWiden(x, y - 1, a, b);
+        this.tryWiden(x, y + 1, a, b);
+      } else {
+        this.tryWiden(x - 1, y, a, b);
+        this.tryWiden(x + 1, y, a, b);
+      }
     }
     // 门：走廊与房间交界处
     this.placeDoorsAlongPath(path, a);
     this.placeDoorsAlongPath(path, b);
+  }
+
+  cellInRoom(x, y, room) {
+    return x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+  }
+
+  // 只在不会打穿第三间房的地方把走廊加宽到 2–3 格
+  tryWiden(x, y, roomA, roomB) {
+    if (!this.inBounds(x, y) || this.get(x, y) !== EMPTY) return;
+    const near = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of near) {
+      const nx = x + dx;
+      const ny = y + dy;
+      for (const room of this.rooms) {
+        if (room === roomA || room === roomB) continue;
+        if (this.cellInRoom(nx, ny, room)) return;
+      }
+    }
+    this.set(x, y, FLOOR);
   }
 
   hLine(x1, x2, y) {
@@ -241,65 +271,194 @@ class Dungeon {
 
 // ---------- 渲染 ----------
 const CELL = 16;
+const SCALE_PAD = 40;
+const FEET_PER_CELL = 5;
+const DUNGEON_FONT = '"Noto Serif SC", "Songti SC", "Noto Serif CJK SC", serif';
+
+function walkable(v) {
+  return v === FLOOR || v === DOOR || v === TRAP || v === TREASURE;
+}
 
 function renderDungeon(dungeon, canvas) {
+  const mapH = dungeon.h * CELL;
   canvas.width = dungeon.w * CELL;
-  canvas.height = dungeon.h * CELL;
+  canvas.height = mapH + SCALE_PAD;
   const ctx = canvas.getContext('2d');
 
-  // 背景（未开凿区域）
   ctx.fillStyle = '#1b140d';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const colors = {
-    [FLOOR]: '#d8c79a',
-    [WALL]: '#4a3522',
-    [DOOR]: '#8a5a2b',
-    [TRAP]: '#b23a2a',
-    [TREASURE]: '#d4af37',
-  };
+  const inRoom = (x, y) => dungeon.rooms.some(r =>
+    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
 
   for (let y = 0; y < dungeon.h; y++) {
     for (let x = 0; x < dungeon.w; x++) {
       const v = dungeon.get(x, y);
       if (v === EMPTY) continue;
-      ctx.fillStyle = colors[v] || '#000';
-      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
-      if (v === FLOOR) {
-        // 轻微纹理
-        ctx.fillStyle = 'rgba(0,0,0,0.03)';
-        if ((x + y) % 2 === 0) ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      const px = x * CELL;
+      const py = y * CELL;
+      if (v === WALL) {
+        ctx.fillStyle = '#4a3522';
+        ctx.fillRect(px, py, CELL, CELL);
+        ctx.fillStyle = '#62503a';
+        ctx.fillRect(px + 1, py + 1, CELL - 2, 3);
+        ctx.fillStyle = 'rgba(20,12,6,0.35)';
+        ctx.fillRect(px, py + CELL - 2, CELL, 2);
+        continue;
       }
+      ctx.fillStyle = inRoom(x, y) ? '#e6d5ad' : '#cbb892';
+      ctx.fillRect(px, py, CELL, CELL);
+      ctx.strokeStyle = 'rgba(90,69,48,0.18)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 1.5, py + 1.5, CELL - 3, CELL - 3);
     }
   }
 
-  // 房间边框 + 编号
-  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.strokeStyle = 'rgba(43,32,22,0.45)';
   ctx.lineWidth = 2;
-  ctx.font = `bold ${CELL * 0.9}px sans-serif`;
-  ctx.fillStyle = '#2b2016';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
   for (const room of dungeon.rooms) {
-    ctx.strokeRect(room.x * CELL, room.y * CELL, room.w * CELL, room.h * CELL);
-    ctx.fillText(String(room.id), room.cx * CELL, room.cy * CELL);
+    ctx.strokeRect(room.x * CELL + 1, room.y * CELL + 1, room.w * CELL - 2, room.h * CELL - 2);
   }
 
-  // 陷阱/宝藏图标
-  ctx.font = `${CELL * 0.8}px sans-serif`;
   for (let y = 0; y < dungeon.h; y++) {
     for (let x = 0; x < dungeon.w; x++) {
       const v = dungeon.get(x, y);
-      if (v === TRAP) ctx.fillText('⚠', x * CELL + CELL / 2, y * CELL + CELL / 2);
-      if (v === TREASURE) ctx.fillText('💰', x * CELL + CELL / 2, y * CELL + CELL / 2);
+      if (v === DOOR) drawDoorGlyph(ctx, dungeon, x, y);
+      else if (v === TRAP) drawTrapGlyph(ctx, x, y);
+      else if (v === TREASURE) drawChestGlyph(ctx, x, y);
     }
   }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const room of dungeon.rooms) {
+    const tx = (room.x + 0.5) * CELL;
+    const ty = (room.y + 0.5) * CELL;
+    drawDungeonBadge(ctx, tx, ty, String(room.id));
+  }
+
+  drawDungeonScale(ctx, mapH);
+}
+
+function drawDungeonBadge(ctx, x, y, text) {
+  ctx.font = `bold 12px ${DUNGEON_FONT}`;
+  const tw = ctx.measureText(text).width;
+  const w = Math.max(16, tw + 8);
+  const h = 16;
+  ctx.fillStyle = 'rgba(255,248,232,0.94)';
+  ctx.beginPath();
+  ctx.roundRect
+    ? ctx.roundRect(x - w / 2, y - h / 2, w, h, 8)
+    : ctx.rect(x - w / 2, y - h / 2, w, h);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(43,32,22,0.45)';
+  ctx.stroke();
+  ctx.fillStyle = '#2b2016';
+  ctx.fillText(text, x, y + 0.5);
+}
+
+function drawDoorGlyph(ctx, dungeon, x, y) {
+  const cx = x * CELL + CELL / 2;
+  const cy = y * CELL + CELL / 2;
+  const left = walkable(dungeon.get(x - 1, y));
+  const right = walkable(dungeon.get(x + 1, y));
+  const up = walkable(dungeon.get(x, y - 1));
+  const down = walkable(dungeon.get(x, y + 1));
+  const verticalPlank = (left || right) && !(up && down && !left && !right);
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (!verticalPlank) ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = '#6b4423';
+  ctx.fillRect(-3.5, -CELL * 0.62, 7, CELL * 1.24);
+  ctx.strokeStyle = '#3a2616';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-3.5, -CELL * 0.62, 7, CELL * 1.24);
+  ctx.strokeStyle = 'rgba(90,58,32,0.9)';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(0, CELL * 0.15, CELL * 0.78, Math.PI * 1.05, Math.PI * 1.85);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTrapGlyph(ctx, x, y) {
+  const cx = x * CELL + CELL / 2;
+  const cy = y * CELL + CELL / 2;
+  const r = CELL * 0.95;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f8e7cf';
+  ctx.fill();
+  ctx.strokeStyle = '#8a2c22';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r * 0.5);
+  ctx.lineTo(cx - r * 0.48, cy + r * 0.38);
+  ctx.lineTo(cx + r * 0.48, cy + r * 0.38);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy + r * 0.16, 1.3, 0, Math.PI * 2);
+  ctx.fillStyle = '#8a2c22';
+  ctx.fill();
+}
+
+function drawChestGlyph(ctx, x, y) {
+  const cx = x * CELL + CELL / 2;
+  const cy = y * CELL + CELL / 2;
+  const r = CELL * 0.98;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f8e7cf';
+  ctx.fill();
+  ctx.strokeStyle = '#8a6a2f';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  const w = r * 1.15;
+  const h = r * 0.78;
+  ctx.fillStyle = '#a9743a';
+  ctx.fillRect(cx - w / 2, cy - h / 2 + 1, w, h);
+  ctx.strokeStyle = '#5c3d1e';
+  ctx.lineWidth = 1.3;
+  ctx.strokeRect(cx - w / 2, cy - h / 2 + 1, w, h);
+  ctx.beginPath();
+  ctx.moveTo(cx - w / 2, cy);
+  ctx.lineTo(cx + w / 2, cy);
+  ctx.stroke();
+  ctx.fillStyle = '#e6c35c';
+  ctx.fillRect(cx - 2, cy - 2, 4, 5);
+}
+
+function drawDungeonScale(ctx, mapH) {
+  const cells = 4;
+  const bar = cells * CELL;
+  const x = 16;
+  const y = mapH + 24;
+  ctx.fillStyle = 'rgba(243,233,207,0.95)';
+  ctx.fillRect(8, mapH + 8, bar + 108, 26);
+  ctx.strokeStyle = '#2b2016';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + bar, y);
+  ctx.moveTo(x, y - 4);
+  ctx.lineTo(x, y + 4);
+  ctx.moveTo(x + bar, y - 4);
+  ctx.lineTo(x + bar, y + 4);
+  ctx.stroke();
+  ctx.font = `12px ${DUNGEON_FONT}`;
+  ctx.fillStyle = '#2b2016';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${cells * FEET_PER_CELL} 尺`, x + bar + 8, y);
 }
 
 function renderRoomInfo(dungeon, container) {
   container.innerHTML = '';
   const title = document.createElement('div');
-  title.innerHTML = `<strong>共 ${dungeon.rooms.length} 个房间</strong>`;
+  title.innerHTML = `<strong>共 ${dungeon.rooms.length} 个房间 · 1 格 = 5 尺</strong>`;
   container.appendChild(title);
   for (const room of dungeon.rooms) {
     const div = document.createElement('div');
@@ -386,6 +545,21 @@ function exportTxt() {
   link.click();
 }
 
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    Dungeon,
+    mulberry32,
+    hashStringToSeed,
+    EMPTY,
+    FLOOR,
+    WALL,
+    DOOR,
+    TRAP,
+    TREASURE,
+  };
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 window.addEventListener('DOMContentLoaded', () => {
   const sliderIds = ['gridW','gridH','roomCount','roomMin','roomMax','loopiness','trapChance','treasureChance'];
   sliderIds.forEach(id => document.getElementById(id).addEventListener('input', syncLabels));
@@ -398,4 +572,10 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   syncLabels();
   generate();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      if (currentDungeon) renderDungeon(currentDungeon, document.getElementById('dungeonCanvas'));
+    });
+  }
 });
+}

@@ -363,25 +363,24 @@ function createCave(opts, seed) {
 
 // ---------- 渲染 ----------
 const CELL = 16;
+const SCALE_PAD = 36;
+const FEET_PER_CELL = 5;
+const CAVE_FONT = '"Noto Serif SC", "Songti SC", "Noto Serif CJK SC", serif';
 
 const CAVE_THEME = {
-  background: '#1a130c',
-  rock: ['#2c2116', '#33271a', '#3a2d1e', '#271d13'],
-  floor: ['#b7a077', '#c0aa80', '#ad966d', '#c9b48b'],
-  edge: 'rgba(26,18,10,0.24)',
-  speck: 'rgba(77,57,35,0.28)',
-  wallRim: 'rgba(201,184,136,0.06)',
+  background: '#140e09',
+  rock: ['#3c2d20', '#2a1e14', '#4d3b28', '#24180f', '#5a4532'],
+  floor: ['#d2bf96', '#c6b184', '#e0cba6', '#bba67a'],
+  shadow: 'rgba(8,5,3,0.42)',
   grass: null,
 };
 
 const FOREST_THEME = {
-  background: '#19140c',
-  rock: ['#2d2516', '#342b1b', '#3b3120', '#292114'],
-  floor: ['#8f955e', '#9aa169', '#858b56', '#a4ab74'],
-  edge: 'rgba(24,22,10,0.24)',
-  speck: 'rgba(58,67,32,0.35)',
-  wallRim: 'rgba(163,178,105,0.06)',
-  grass: 'rgba(58,78,34,0.45)',
+  background: '#14210f',
+  rock: ['#1d3a16', '#24501c', '#163212', '#2c5a22', '#1a4018'],
+  floor: ['#d9c48a', '#cbb67a', '#e6d7a4', '#b7a56c'],
+  shadow: 'rgba(8,16,6,0.4)',
+  grass: '#3f6b32',
 };
 
 // 与种子无关的稳定噪声，用于地面纹理/岩石色块
@@ -393,89 +392,246 @@ function tileNoise(x, y, salt) {
   return (h >>> 0) / 4294967296;
 }
 
+function fillBlob(ctx, cx, cy, radius, x, y, salt) {
+  ctx.beginPath();
+  const steps = 9;
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const wobble = 0.86 + tileNoise(x * 5 + i, y * 3 + salt, salt + 11) * 0.28;
+    const px = cx + Math.cos(a) * radius * wobble;
+    const py = cy + Math.sin(a) * radius * (0.86 + tileNoise(y * 4 + i, x + salt, salt + 29) * 0.28);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
 function renderCave(cave, canvas) {
-  const theme = cave.opts.style === 'forest' ? FOREST_THEME : CAVE_THEME;
-  canvas.width = cave.w * CELL;
-  canvas.height = cave.h * CELL;
+  const forest = cave.opts.style === 'forest';
+  const theme = forest ? FOREST_THEME : CAVE_THEME;
+  const mapW = cave.w * CELL;
+  const mapH = cave.h * CELL;
+  canvas.width = mapW;
+  canvas.height = mapH + SCALE_PAD;
   const ctx = canvas.getContext('2d');
 
   ctx.fillStyle = theme.background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // 地形先画在离屏画布上再轻微模糊，把元胞的硬边收成连续的岩壁/树冠
+  const doc = canvas.ownerDocument || (typeof document !== 'undefined' ? document : null);
+  let tctx = ctx;
+  let terrain = null;
+  if (doc) {
+    terrain = doc.createElement('canvas');
+    terrain.width = mapW;
+    terrain.height = mapH;
+    tctx = terrain.getContext('2d');
+    tctx.fillStyle = theme.background;
+    tctx.fillRect(0, 0, mapW, mapH);
+  }
+
   for (let y = 0; y < cave.h; y++) {
     for (let x = 0; x < cave.w; x++) {
-      const px = x * CELL;
-      const py = y * CELL;
-
-      if (!cave.isFloor(x, y)) {
-        const n = tileNoise(x, y, 11);
-        ctx.fillStyle = theme.rock[Math.floor(n * theme.rock.length)];
-        ctx.fillRect(px, py, CELL, CELL);
-
-        // 贴近地面的岩壁给一点暖色反光，增强洞穴层次
-        const touchesFloor = cave.isFloor(x - 1, y) || cave.isFloor(x + 1, y) ||
-                             cave.isFloor(x, y - 1) || cave.isFloor(x, y + 1);
-        if (touchesFloor) {
-          ctx.fillStyle = theme.wallRim;
-          ctx.fillRect(px, py, CELL, CELL);
-        } else if (n > 0.955) {
-          ctx.fillStyle = 'rgba(201,184,136,0.08)';
-          ctx.fillRect(px, py + CELL * 0.5, CELL, 1);
-        }
-        continue;
-      }
-
-      const n = tileNoise(x, y, 23);
-      ctx.fillStyle = theme.floor[Math.floor(n * theme.floor.length)];
-      ctx.fillRect(px, py, CELL, CELL);
-
-      // 地面细碎颗粒
-      if (n > 0.74) {
-        ctx.fillStyle = theme.speck;
-        const sx = px + 2 + Math.floor(tileNoise(x, y, 31) * (CELL - 5));
-        const sy = py + 2 + Math.floor(tileNoise(x, y, 37) * (CELL - 5));
-        ctx.fillRect(sx, sy, 2, 2);
-      }
-
-      // 林间地面草叶
-      if (theme.grass && tileNoise(x, y, 41) > 0.62) {
-        ctx.strokeStyle = theme.grass;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(px + CELL * 0.32, py + CELL * 0.70);
-        ctx.lineTo(px + CELL * 0.27, py + CELL * 0.48);
-        ctx.moveTo(px + CELL * 0.53, py + CELL * 0.72);
-        ctx.lineTo(px + CELL * 0.55, py + CELL * 0.46);
-        ctx.stroke();
-      }
-
-      // 地面与岩壁交界的阴影，让轮廓更清晰
-      ctx.fillStyle = theme.edge;
-      const edge = 3;
-      if (!cave.isFloor(x, y - 1)) ctx.fillRect(px, py, CELL, edge);
-      if (!cave.isFloor(x, y + 1)) ctx.fillRect(px, py + CELL - edge, CELL, edge);
-      if (!cave.isFloor(x - 1, y)) ctx.fillRect(px, py, edge, CELL);
-      if (!cave.isFloor(x + 1, y)) ctx.fillRect(px + CELL - edge, py, edge, CELL);
+      if (cave.isFloor(x, y)) continue;
+      tctx.fillStyle = theme.rock[1];
+      const jitterX = (tileNoise(x, y, 3) - 0.5) * 2;
+      const jitterY = (tileNoise(x, y, 5) - 0.5) * 2;
+      fillBlob(tctx, (x + 0.5) * CELL + jitterX, (y + 0.5) * CELL + jitterY, CELL * 1.05, x, y, 2);
     }
   }
 
-  // 按行排序后再画，树冠重叠时前后关系更自然
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < cave.h; y++) {
+      for (let x = 0; x < cave.w; x++) {
+        if (!cave.isFloor(x, y)) continue;
+        const cx = (x + 0.5) * CELL;
+        const cy = (y + 0.5) * CELL;
+        if (pass === 0) {
+          tctx.fillStyle = theme.shadow;
+          fillBlob(tctx, cx, cy, CELL * 1.08, x, y, 4);
+        } else {
+          tctx.fillStyle = theme.floor[0];
+          fillBlob(tctx, cx, cy, CELL * 0.94, x, y, 6);
+        }
+      }
+    }
+  }
+
+  // 大块淡色晕染，避免地面再出现一格一块的色差
+  for (let i = 0; i < 8; i++) {
+    const x = tileNoise(i, 3, 17) * mapW;
+    const y = tileNoise(i, 8, 19) * mapH;
+    tctx.fillStyle = forest
+      ? (i % 2 ? 'rgba(70,110,50,0.10)' : 'rgba(210,180,110,0.10)')
+      : (i % 2 ? 'rgba(120,90,50,0.10)' : 'rgba(255,236,200,0.10)');
+    tctx.beginPath();
+    tctx.ellipse(
+      x, y,
+      50 + tileNoise(i, 1, 21) * 110,
+      36 + tileNoise(i, 2, 23) * 80,
+      tileNoise(i, 4, 29) * Math.PI,
+      0, Math.PI * 2
+    );
+    tctx.fill();
+  }
+
+  if (terrain) {
+    ctx.save();
+    ctx.filter = 'blur(3.2px)';
+    ctx.drawImage(terrain, 0, 0);
+    ctx.restore();
+    ctx.fillStyle = theme.background;
+    ctx.fillRect(0, mapH, mapW, SCALE_PAD);
+  }
+
+  if (forest) {
+    ctx.strokeStyle = theme.grass;
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = 'round';
+    for (let y = 0; y < cave.h; y++) {
+      for (let x = 0; x < cave.w; x++) {
+        if (!cave.isFloor(x, y) || tileNoise(x, y, 41) < 0.42) continue;
+        const px = x * CELL;
+        const py = y * CELL;
+        ctx.beginPath();
+        ctx.moveTo(px + CELL * 0.28, py + CELL * 0.72);
+        ctx.quadraticCurveTo(px + CELL * 0.2, py + CELL * 0.4, px + CELL * 0.34, py + CELL * 0.28);
+        ctx.moveTo(px + CELL * 0.62, py + CELL * 0.7);
+        ctx.quadraticCurveTo(px + CELL * 0.7, py + CELL * 0.42, px + CELL * 0.55, py + CELL * 0.3);
+        ctx.stroke();
+      }
+    }
+  } else {
+    for (let y = 0; y < cave.h; y++) {
+      for (let x = 0; x < cave.w; x++) {
+        if (!cave.isFloor(x, y) || tileNoise(x, y, 31) < 0.8) continue;
+        ctx.fillStyle = 'rgba(90,70,45,0.28)';
+        const sx = (x + 0.2 + tileNoise(x, y, 33) * 0.6) * CELL;
+        const sy = (y + 0.2 + tileNoise(x, y, 37) * 0.6) * CELL;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 1.6, 1.1, tileNoise(x, y, 39) * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const propScale = forest ? 2.15 : 1.4;
   const sorted = cave.decorations.slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
   for (const d of sorted) {
     const cx = (d.x + 0.5) * CELL;
     const cy = (d.y + 0.5) * CELL;
-    if (d.type === 'tree') drawTree(ctx, d, cx, cy);
-    else if (d.type === 'bush') drawBush(ctx, d, cx, cy);
-    else drawRubble(ctx, d, cx, cy);
+    if (d.type === 'tree') drawTree(ctx, d, cx, cy, propScale);
+    else if (d.type === 'bush') drawBush(ctx, d, cx, cy, forest ? 1.85 : 1.35);
+    else drawRubble(ctx, d, cx, cy, forest ? 1.2 : 1.55);
   }
 
-  ctx.strokeStyle = 'rgba(201,184,136,0.28)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+  drawEntrance(ctx, cave);
+  drawCaveScale(ctx, mapW, mapH);
 }
 
-function drawTree(ctx, d, cx, cy) {
-  const s = CELL * d.size;
+function findEntrance(cave) {
+  let best = null;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let y = 0; y < cave.h; y++) {
+    for (let x = 0; x < cave.w; x++) {
+      if (!cave.isFloor(x, y)) continue;
+      for (const [dx, dy] of dirs) {
+        const rx = x + dx;
+        const ry = y + dy;
+        if (!cave.inBounds(rx, ry) || cave.isFloor(rx, ry)) continue;
+        const edge = Math.min(Math.max(rx, 0), Math.max(ry, 0), cave.w - 1 - rx, cave.h - 1 - ry);
+        if (!best || edge < best.edge || (edge === best.edge && (ry < best.ry || (ry === best.ry && rx < best.rx)))) {
+          best = { fx: x, fy: y, rx, ry, edge };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function drawEntrance(ctx, cave) {
+  const ent = findEntrance(cave);
+  if (!ent) return;
+  const fx = (ent.fx + 0.5) * CELL;
+  const fy = (ent.fy + 0.5) * CELL;
+  const rx = (ent.rx + 0.5) * CELL;
+  const ry = (ent.ry + 0.5) * CELL;
+
+  ctx.save();
+  ctx.translate(rx, ry);
+  ctx.rotate(Math.atan2(fy - ry, fx - rx));
+  ctx.fillStyle = '#120d09';
+  ctx.beginPath();
+  ctx.moveTo(-8, 12);
+  ctx.lineTo(-8, -1);
+  ctx.quadraticCurveTo(-8, -15, 0, -15);
+  ctx.quadraticCurveTo(8, -15, 8, -1);
+  ctx.lineTo(8, 12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#f3e6c8';
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
+  ctx.restore();
+
+  let lx = rx + (rx - fx) * 1.15;
+  let ly = ry + (ry - fy) * 1.15;
+  ctx.font = `bold 13px ${CAVE_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const text = '入口';
+  const tw = ctx.measureText(text).width;
+  lx = Math.max(8 + tw / 2, Math.min(cave.w * CELL - 8 - tw / 2, lx));
+  ly = Math.max(12, Math.min(cave.h * CELL - 12, ly));
+  ctx.fillStyle = 'rgba(246,237,212,0.95)';
+  roundCaveLabel(ctx, lx - tw / 2 - 6, ly - 10, tw + 12, 20, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(43,32,22,0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#8a2c22';
+  ctx.fillText(text, lx, ly + 0.5);
+}
+
+function roundCaveLabel(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawCaveScale(ctx, mapW, mapH) {
+  const cells = 4;
+  const bar = cells * CELL;
+  const x = 14;
+  const y = mapH + 22;
+  ctx.fillStyle = 'rgba(243,233,207,0.95)';
+  roundCaveLabel(ctx, 8, mapH + 6, Math.min(mapW - 16, bar + 108), 26, 6);
+  ctx.fill();
+  ctx.strokeStyle = '#2b2016';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + bar, y);
+  ctx.moveTo(x, y - 4);
+  ctx.lineTo(x, y + 4);
+  ctx.moveTo(x + bar, y - 4);
+  ctx.lineTo(x + bar, y + 4);
+  ctx.stroke();
+  ctx.font = `12px ${CAVE_FONT}`;
+  ctx.fillStyle = '#2b2016';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${cells * FEET_PER_CELL} 尺`, x + bar + 8, y);
+}
+
+function drawTree(ctx, d, cx, cy, scale) {
+  const s = CELL * d.size * (scale || 1);
   const pine = d.variant === 'pine';
   const greens = pine
     ? ['#3d5a35', '#4b6c3f', '#31502f']
@@ -522,8 +678,8 @@ function drawTree(ctx, d, cx, cy) {
   }
 }
 
-function drawBush(ctx, d, cx, cy) {
-  const s = CELL * d.size * 0.72;
+function drawBush(ctx, d, cx, cy, scale) {
+  const s = CELL * d.size * 0.72 * (scale || 1);
   ctx.fillStyle = 'rgba(20,14,8,0.22)';
   ctx.beginPath();
   ctx.ellipse(cx + 1, cy + s * 0.45, s * 0.85, s * 0.38, 0, 0, Math.PI * 2);
@@ -546,8 +702,8 @@ function drawBush(ctx, d, cx, cy) {
   }
 }
 
-function drawRubble(ctx, d, cx, cy) {
-  const s = CELL * d.size * 0.58;
+function drawRubble(ctx, d, cx, cy, scale) {
+  const s = CELL * d.size * 0.58 * (scale || 1);
   const tones = ['#6b6252', '#7c7260', '#5b5344'];
   for (let i = 0; i < 3; i++) {
     const angle = d.rotation + i * 2.1;
@@ -599,15 +755,27 @@ function readOpts() {
   };
 }
 
+function syncStyleCopy() {
+  const forest = document.getElementById('sceneStyle').value === 'forest';
+  document.getElementById('generateBtn').textContent = forest ? '生成林间' : '生成洞穴';
+  document.getElementById('styleHint').textContent = forest
+    ? '林间风格把不可通行区域画成树冠，空地为草地，并点缀较大的树木与灌木。'
+    : '洞穴风格把不可通行区域画成岩壁，地面为沙土，并点缀碎石与少量灌木。';
+  document.getElementById('fillLabel').textContent = forest ? '初始树冠填充率' : '初始岩石填充率';
+  document.getElementById('decorLabel').textContent = forest ? '装饰物密度（树木 / 灌木）' : '装饰物密度（碎石 / 灌木）';
+}
+
 function syncLabels() {
   document.getElementById('valW').textContent = document.getElementById('gridW').value;
   document.getElementById('valH').textContent = document.getElementById('gridH').value;
   document.getElementById('valFill').textContent = document.getElementById('rockFill').value + '%';
   document.getElementById('valSmooth').textContent = document.getElementById('smoothing').value + ' 轮';
   document.getElementById('valDecor').textContent = document.getElementById('decorDensity').value + '%';
+  syncStyleCopy();
 }
 
 function generate() {
+  syncStyleCopy();
   const opts = readOpts();
   const seedInput = document.getElementById('seedInput');
   const seedText = seedInput.value.trim();
@@ -649,10 +817,14 @@ function renderCaveInfo(cave, container) {
   }
 }
 
+function styleFileStem() {
+  return currentCave && currentCave.opts.style === 'forest' ? '林间' : '洞穴';
+}
+
 function exportPng() {
   const canvas = document.getElementById('caveCanvas');
   const link = document.createElement('a');
-  link.download = `洞穴_${currentSeedText || 'random'}.png`;
+  link.download = `${styleFileStem()}_${currentSeedText || 'random'}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 }
@@ -662,7 +834,7 @@ function exportTxt() {
   const text = buildCaveSummary(currentCave, currentSeedText);
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const link = document.createElement('a');
-  link.download = `洞穴描述_${currentSeedText || 'random'}.txt`;
+  link.download = `${styleFileStem()}描述_${currentSeedText || 'random'}.txt`;
   link.href = URL.createObjectURL(blob);
   link.click();
 }
@@ -682,6 +854,11 @@ function initCavePage() {
 
   syncLabels();
   generate();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      if (currentCave) renderCave(currentCave, document.getElementById('caveCanvas'));
+    });
+  }
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
