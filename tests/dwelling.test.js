@@ -430,6 +430,41 @@ test('单房间建筑也能生成并带入口', () => {
 // =========================================================
 section('6. TXT 清单');
 
+function itemTouchesRoomEdge(dwell, room, item) {
+  for (let dy = 0; dy < item.h; dy++) {
+    for (let dx = 0; dx < item.w; dx++) {
+      const x = item.x + dx;
+      const y = item.y + dy;
+      const neighbors = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+      for (const [nx, ny] of neighbors) {
+        if (!dwell.hasCell(nx, ny) || dwell.owner[cellIdx(dwell, nx, ny)] !== room.id) return true;
+      }
+    }
+  }
+  return false;
+}
+
+test('大房间的家具会进入房间中央，而不是只贴墙', () => {
+  let checked = 0;
+  for (const seed of [1, 42, 995441513, 7, 2026, 88]) {
+    const dwell = generateDwelling(
+      { size: 22, roomCount: 6, lShape: 0, furnitureDensity: 75 },
+      seed,
+    );
+    validateDwelling(dwell, `中央家具 seed=${seed}`);
+    for (const room of dwell.rooms) {
+      if (room.area < 20 || room.bbox.w < 5 || room.bbox.h < 5) continue;
+      checked++;
+      const interior = room.furniture.filter(item => !itemTouchesRoomEdge(dwell, room, item));
+      assert(
+        interior.length >= 1,
+        `房间 ${room.id}·${room.type}（${room.area} 格）没有摆在中央的家具`,
+      );
+    }
+  }
+  assert(checked >= 4, `应检查到多个大房间，实际 ${checked}`);
+});
+
 test('清单包含种子、每个房间的编号/类型/家具与入口信息', () => {
   const dwell = generateDwelling({ size: 22, roomCount: 6, lShape: 45, furnitureDensity: 70 }, '清单种子');
   const text = buildDwellingText(dwell, '清单种子');
