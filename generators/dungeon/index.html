@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>地牢生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/style.css">
 <style>
   .dg-wrap {
@@ -77,12 +78,8 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
   #roomInfo {
-    margin-top: 16px;
     font-size: 0.85rem;
     color: var(--ink-soft);
-    max-height: 220px;
-    overflow-y: auto;
-    width: 100%;
   }
   #roomInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
   .seed-row { display: flex; gap: 6px; }
@@ -161,12 +158,14 @@
 
   <div class="canvas-panel">
     <canvas id="dungeonCanvas" width="900" height="648"></canvas>
-    <div id="roomInfo"></div>
+    <p class="scroll-hint" hidden>清单较长，可在框内滚动</p>
+    <div id="roomInfo" class="map-list"></div>
   </div>
 </div>
 
 <footer>按房间编号对照右侧清单，方便跑团时口述描述 · 本地生成，不上传任何数据</footer>
 
+<script src="../../assets/ui.js"></script>
 <script src="dungeon.js"></script>
 </body>
 </html>

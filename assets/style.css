@@ -1,3 +1,19 @@
+@font-face {
+  font-family: "Noto Serif SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/noto-serif-sc-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Serif SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/noto-serif-sc-700.woff2") format("woff2");
+}
+
 :root {
   --ink: #2b2016;
   --ink-soft: #5a4a38;
@@ -14,7 +30,7 @@
 
 body {
   margin: 0;
-  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", "Noto Serif CJK SC", serif;
   background: radial-gradient(ellipse at top, #3a2f22, #1d1712 70%);
   color: var(--ink);
   min-height: 100vh;
@@ -32,6 +48,7 @@ a { color: inherit; }
   margin: 0 0 6px;
   font-size: 2rem;
   letter-spacing: 0.1em;
+  font-weight: 700;
 }
 
 .site-header p {
@@ -48,3 +65,117 @@ a { color: inherit; }
   text-decoration: none;
 }
 .site-header .back-link:hover { text-decoration: underline; }
+
+footer {
+  text-align: center;
+  color: #cbbfa2;
+  font-size: 0.8rem;
+  padding: 8px 20px 28px;
+}
+
+/* 羊皮纸主题滑条，替代浏览器默认的蓝色轨道 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  margin: 2px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]:focus {
+  outline: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(138, 44, 34, 0.28);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: linear-gradient(#d9c79a, #b7a47a);
+  border: 1px solid #a8946a;
+  border-radius: 999px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #c46a42, #8a2c22 68%);
+  border: 2px solid #f6edd4;
+  box-shadow: 0 1px 2px rgba(43, 32, 22, 0.35);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: linear-gradient(#d9c79a, #b7a47a);
+  border: 1px solid #a8946a;
+  border-radius: 999px;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #8a2c22;
+  border: 2px solid #f6edd4;
+  box-shadow: 0 1px 2px rgba(43, 32, 22, 0.35);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 6px;
+  background: #8a5a3a;
+  border-radius: 999px;
+}
+
+/* 房间 / 建筑清单：更高的可视区域，并在溢出时露出滚动条与底部渐隐 */
+.map-list {
+  margin-top: 8px;
+  max-height: 480px;
+  overflow-y: auto;
+  width: 100%;
+  padding: 4px 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f0dc;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #8a6a42 #efe6cf;
+}
+
+.map-list.is-overflowing {
+  box-shadow: inset 0 -18px 16px -14px rgba(90, 69, 48, 0.45);
+  border-bottom-color: #8a6a42;
+}
+
+.map-list::-webkit-scrollbar { width: 10px; }
+.map-list::-webkit-scrollbar-track {
+  background: #efe6cf;
+  border-radius: 999px;
+}
+.map-list::-webkit-scrollbar-thumb {
+  background: #8a6a42;
+  border-radius: 999px;
+  border: 2px solid #efe6cf;
+}
+
+.scroll-hint {
+  margin: 14px 0 0;
+  width: 100%;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.scroll-hint::before {
+  content: "↕ ";
+  color: var(--accent);
+}

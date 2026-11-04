@@ -794,7 +794,7 @@ function renderDwelling(dwelling, canvas) {
   ctx.fillStyle = 'rgba(90,74,56,0.8)';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('房间编号对照下方清单', 24, CANVAS_H - 18);
+  ctx.fillText('房间编号与家具名称见下方清单', 24, CANVAS_H - 18);
   ctx.textAlign = 'right';
   ctx.fillText('1 格 ≈ 1 尺', CANVAS_W - 24, CANVAS_H - 18);
 }
@@ -1257,15 +1257,6 @@ function drawFurniture(ctx, item, px, py) {
     }
   }
 
-  // 家具文字标注（带羊皮纸描边，压在图标下缘）
-  ctx.font = `${CELL * 0.31}px ${SERIF_FONT}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = 'rgba(236,224,196,0.92)';
-  ctx.strokeText(item.label, px + w / 2, py + h - 3);
-  ctx.fillStyle = '#3b2c1e';
-  ctx.fillText(item.label, px + w / 2, py + h - 3);
   ctx.restore();
 }
 
@@ -1395,6 +1386,13 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     });
     syncLabels();
     generate();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        if (typeof currentDwelling !== 'undefined' && currentDwelling) {
+          renderDwelling(currentDwelling, document.getElementById('dwellingCanvas'));
+        }
+      });
+    }
   });
 }
 

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>海岸生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/style.css">
 <style>
   .coast-wrap {
@@ -77,12 +78,8 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
   #coastInfo {
-    margin-top: 16px;
     font-size: 0.85rem;
     color: var(--ink-soft);
-    max-height: 260px;
-    overflow-y: auto;
-    width: 100%;
   }
   #coastInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
   .seed-row { display: flex; gap: 6px; }
@@ -149,12 +146,14 @@
 
   <div class="canvas-panel">
     <canvas id="coastCanvas" width="900" height="900"></canvas>
-    <div id="coastInfo"></div>
+    <p class="scroll-hint" hidden>清单较长，可在框内滚动</p>
+    <div id="coastInfo" class="map-list"></div>
   </div>
 </div>
 
 <footer>相同种子与参数可复现同一张海岸 · 特征编号与清单一一对应 · 本地生成，不上传任何数据</footer>
 
+<script src="../../assets/ui.js"></script>
 <script src="coast.js"></script>
 </body>
 </html>

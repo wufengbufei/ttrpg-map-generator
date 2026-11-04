@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>城市生成器 · 中文 TTRPG 地图生成器</title>
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/style.css">
 <style>
   .city-wrap {
@@ -79,12 +80,8 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(43,32,22,0.25); }
   #blockInfo {
-    margin-top: 16px;
     font-size: 0.85rem;
     color: var(--ink-soft);
-    max-height: 300px;
-    overflow-y: auto;
-    width: 100%;
   }
   #blockInfo div { padding: 4px 0; border-bottom: 1px dashed var(--line); }
   #blockInfo div:first-child { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
@@ -149,12 +146,14 @@
 
   <div class="canvas-panel">
     <canvas id="cityCanvas" width="900" height="900"></canvas>
-    <div id="blockInfo"></div>
+    <p class="scroll-hint" hidden>清单较长，可在框内滚动</p>
+    <div id="blockInfo" class="map-list"></div>
   </div>
 </div>
 
 <footer>街区编号可对照 PNG 与 TXT 清单，方便跑团时口述城市方位 · 本地生成，不上传任何数据</footer>
 
+<script src="../../assets/ui.js"></script>
 <script src="city.js"></script>
 </body>
 </html>

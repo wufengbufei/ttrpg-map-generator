@@ -392,10 +392,8 @@ function renderVillage(village, canvas) {
   // 树木
   for (const t of village.trees) drawTree(ctx, t);
 
-  // 道路
-  for (const road of village.roads) {
-    drawRoad(ctx, village.buildings[road.i], village.buildings[road.j], road);
-  }
+  // 道路（画在围栏数据可用之后，弯道会避开建筑与围栏）
+  for (const road of village.roads) drawRoad(ctx, village, road);
 
   // 围栏
   if (village.fence) drawFence(ctx, village.fence);
@@ -437,49 +435,339 @@ function drawTree(ctx, t) {
   ctx.fill();
 }
 
-function drawRoad(ctx, a, b, road) {
+const LABEL_FONT = '"Noto Serif SC", "Songti SC", "Noto Serif CJK SC", serif';
+
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    const hit = (a.y > pt.y) !== (b.y > pt.y) &&
+      pt.x < ((b.x - a.x) * (pt.y - a.y)) / ((b.y - a.y) || 1e-12) + a.x;
+    if (hit) inside = !inside;
+  }
+  return inside;
+}
+
+function buildingContains(b, x, y, pad) {
+  const dx = x - b.x;
+  const dy = y - b.y;
+  const cos = Math.cos(-b.angle);
+  const sin = Math.sin(-b.angle);
+  const lx = dx * cos - dy * sin;
+  const ly = dx * sin + dy * cos;
+  return Math.abs(lx) <= b.w / 2 + pad && Math.abs(ly) <= b.h / 2 + pad;
+}
+
+function quadPoint(a, b, ctrl, t) {
+  const u = 1 - t;
+  return {
+    x: u * u * a.x + 2 * u * t * ctrl.x + t * t * b.x,
+    y: u * u * a.y + 2 * u * t * ctrl.y + t * t * b.y,
+  };
+}
+
+function curveHitsObstacle(a, b, ctrl, buildings, fence) {
+  for (let k = 1; k < 18; k++) {
+    const p = quadPoint(a, b, ctrl, k / 18);
+    if (fence && !pointInPolygon(p, fence)) return true;
+    for (const other of buildings) {
+      if (other === a || other === b) continue;
+      if (buildingContains(other, p.x, p.y, 1)) return true;
+    }
+  }
+  return false;
+}
+
+// 渲染时把道路弯出建筑与围栏，不改生成数据，种子结果保持不变
+function clearRoadControl(a, b, authored, buildings, fence) {
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const authoredOff = (authored.x - mx) * nx + (authored.y - my) * ny;
+  const candidates = [authoredOff, 0];
+  for (let mag = 12; mag <= Math.min(90, len * 0.45); mag += 12) {
+    candidates.push(authoredOff + mag, authoredOff - mag, mag, -mag);
+  }
+  for (const off of candidates) {
+    const ctrl = { x: mx + nx * off, y: my + ny * off };
+    if (!curveHitsObstacle(a, b, ctrl, buildings, fence)) return ctrl;
+  }
+  return { x: mx, y: my };
+}
+
+function roadPolylines(a, b, ctrl, buildings) {
+  const segments = [];
+  let current = [];
+  for (let k = 0; k <= 32; k++) {
+    const p = quadPoint(a, b, ctrl, k / 32);
+    const blocked = buildings.some(o => {
+      const pad = (o === a || o === b) ? -1.5 : 0.5;
+      return buildingContains(o, p.x, p.y, pad);
+    });
+    if (blocked) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+      continue;
+    }
+    current.push(p);
+  }
+  if (current.length > 1) segments.push(current);
+  return segments;
+}
+
+function strokePolyline(ctx, pts, color, width) {
+  if (pts.length < 2) return;
   ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.quadraticCurveTo(road.ctrl.x, road.ctrl.y, b.x, b.y);
-  ctx.strokeStyle = '#8a6d4a';
-  ctx.lineWidth = road.width + 3;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.stroke();
-  ctx.strokeStyle = '#c9a97a';
-  ctx.lineWidth = road.width;
-  ctx.stroke();
 }
 
-function drawFence(ctx, pts) {
-  // 横杆
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i <= pts.length; i++) {
-    const p = pts[i % pts.length];
-    ctx.lineTo(p.x, p.y);
+function drawRoad(ctx, village, road) {
+  const a = village.buildings[road.i];
+  const b = village.buildings[road.j];
+  const ctrl = clearRoadControl(a, b, road.ctrl, village.buildings, village.fence);
+  const segments = roadPolylines(a, b, ctrl, village.buildings);
+  for (const pts of segments) {
+    strokePolyline(ctx, pts, '#8a6d4a', road.width + 2.5);
+    strokePolyline(ctx, pts, '#c9a97a', road.width);
   }
-  ctx.closePath();
-  ctx.strokeStyle = '#7a5a3e';
-  ctx.lineWidth = 3;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
+}
 
-  // 等距栅栏桩
-  const step = 22;
-  ctx.fillStyle = '#5a422e';
+function sampleFence(pts, spacing) {
+  const out = [];
   for (let i = 0; i < pts.length; i++) {
     const a = pts[i];
     const b = pts[(i + 1) % pts.length];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
     if (len < 0.001) continue;
-    const ux = dx / len;
-    const uy = dy / len;
-    for (let d = 0; d < len; d += step) {
-      ctx.fillRect(a.x + ux * d - 1.7, a.y + uy * d - 1.7, 3.4, 3.4);
+    const steps = Math.max(1, Math.round(len / spacing));
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps;
+      const x = a.x + (b.x - a.x) * t;
+      const y = a.y + (b.y - a.y) * t;
+      let nx = x - CX;
+      let ny = y - CY;
+      const nl = Math.hypot(nx, ny) || 1;
+      nx /= nl;
+      ny /= nl;
+      out.push({ x, y, nx, ny });
     }
+  }
+  return out;
+}
+
+function drawFence(ctx, pts) {
+  const samples = sampleFence(pts, 6.2);
+  if (samples.length < 8) return;
+  let gate = samples[0];
+  for (const p of samples) if (p.y > gate.y) gate = p;
+  const gap = 18;
+
+  function inGap(p) {
+    return Math.hypot(p.x - gate.x, p.y - gate.y) < gap;
+  }
+
+  // 一根绑绳，把木桩连成栅栏，而不是两条平行轨
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  let started = false;
+  for (const p of samples) {
+    if (inGap(p)) { started = false; continue; }
+    const x = p.x + p.nx * 1.5;
+    const y = p.y + p.ny * 1.5;
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#8a6848';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  samples.forEach((p, i) => {
+    if (inGap(p)) return;
+    const tx = -p.ny;
+    const ty = p.nx;
+    const len = 8 + (i % 3);
+    const x0 = p.x + p.nx * -1.5;
+    const y0 = p.y + p.ny * -1.5;
+    const x1 = p.x + p.nx * len;
+    const y1 = p.y + p.ny * len;
+    const half = 1.7;
+    ctx.beginPath();
+    ctx.moveTo(x0 + tx * half, y0 + ty * half);
+    ctx.lineTo(x0 - tx * half, y0 - ty * half);
+    ctx.lineTo(x1, y1);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 === 0 ? '#5a3f2a' : '#6d5138';
+    ctx.fill();
+  });
+
+  // 南侧缺口做成门：两根更高的门柱
+  for (const sign of [-1, 1]) {
+    let best = null;
+    let bestD = Infinity;
+    for (const p of samples) {
+      const along = (p.x - gate.x) * (-gate.ny) + (p.y - gate.y) * gate.nx;
+      const d = Math.hypot(p.x - gate.x, p.y - gate.y);
+      if (Math.sign(along) !== sign || d < gap - 3 || d > gap + 12) continue;
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    if (!best) continue;
+    const tx = -best.ny;
+    const ty = best.nx;
+    const x0 = best.x + best.nx * -3;
+    const y0 = best.y + best.ny * -3;
+    const x1 = best.x + best.nx * 14;
+    const y1 = best.y + best.ny * 14;
+    ctx.beginPath();
+    ctx.moveTo(x0 + tx * 2.4, y0 + ty * 2.4);
+    ctx.lineTo(x0 - tx * 2.4, y0 - ty * 2.4);
+    ctx.lineTo(x1, y1);
+    ctx.closePath();
+    ctx.fillStyle = '#3d2b1c';
+    ctx.fill();
+  }
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function drawHouse(ctx, b) {
+  const w = b.w;
+  const h = b.h;
+  const hw = w / 2;
+  const hh = h / 2;
+
+  ctx.fillStyle = 'rgba(43,32,22,0.20)';
+  roundRectPath(ctx, -hw + 3, -hh + 4, w, h, 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#f3e6c8';
+  roundRectPath(ctx, -hw, -hh, w, h, 1.5);
+  ctx.fill();
+  ctx.strokeStyle = '#3a2b1d';
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  if (b.type === '市场') {
+    const stripes = 5;
+    const innerH = h - 8;
+    for (let i = 0; i < stripes; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#b5544a' : '#f6edd8';
+      ctx.fillRect(-hw + 3, -hh + 4 + (innerH / stripes) * i, w - 6, innerH / stripes - 0.8);
+    }
+    ctx.strokeStyle = 'rgba(43,32,22,0.45)';
+    ctx.strokeRect(-hw + 3, -hh + 4, w - 6, innerH);
+    return;
+  }
+
+  const doorW = b.type === '仓库' ? Math.min(14, w * 0.34) : Math.min(8, w * 0.22);
+  const doorH = Math.min(12, h * 0.32);
+  ctx.fillStyle = '#6b4428';
+  ctx.fillRect(-doorW / 2, hh - doorH - 1.2, doorW, doorH);
+  if (b.type === '仓库') {
+    ctx.strokeStyle = '#3a2b1d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, hh - doorH - 1.2);
+    ctx.lineTo(0, hh - 1.2);
+    ctx.stroke();
+  }
+
+  if (w > 34 && b.type !== '教堂') {
+    ctx.fillStyle = '#8faba6';
+    const win = Math.min(5.5, w * 0.14);
+    ctx.fillRect(-hw + w * 0.16, -2, win, win * 0.75);
+    ctx.fillRect(hw - w * 0.16 - win, -2, win, win * 0.75);
+  }
+
+  const peak = b.type === '仓库' ? hh * 0.15 : hh + 4;
+  const roofBottom = b.type === '仓库' ? -hh * 0.05 : hh * 0.22;
+  ctx.beginPath();
+  ctx.moveTo(-hw - 3, roofBottom);
+  ctx.lineTo(0, -peak);
+  ctx.lineTo(hw + 3, roofBottom);
+  ctx.closePath();
+  ctx.fillStyle = b.color;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(43,32,22,0.72)';
+  ctx.lineWidth = 1.25;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(-hw - 3, roofBottom);
+  ctx.lineTo(0, -peak);
+  ctx.lineTo(0, roofBottom);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(43,32,22,0.18)';
+  ctx.fill();
+
+  if (b.type !== '教堂') {
+    ctx.fillStyle = '#5c4636';
+    ctx.fillRect(hw * 0.32, -peak + 2, 4.2, 8);
+    if (b.type === '铁匠铺') {
+      ctx.strokeStyle = 'rgba(90,90,90,0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(hw * 0.32 + 6, -peak, 3.2, Math.PI, 0);
+      ctx.stroke();
+    }
+  }
+
+  if (b.type === '教堂') {
+    ctx.fillStyle = '#6e6258';
+    ctx.fillRect(-4, -peak - 7, 8, 8);
+    ctx.strokeStyle = '#3a2b1d';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-4, -peak - 7, 8, 8);
+    ctx.strokeStyle = '#f4e7c8';
+    ctx.lineWidth = 1.7;
+    ctx.beginPath();
+    ctx.moveTo(0, -peak - 7);
+    ctx.lineTo(0, -peak - 15);
+    ctx.moveTo(-3.5, -peak - 12);
+    ctx.lineTo(3.5, -peak - 12);
+    ctx.stroke();
+  } else if (b.type === '磨坊') {
+    ctx.beginPath();
+    ctx.arc(hw * 0.15, hh * 0.05, Math.min(8, h * 0.22), 0, Math.PI * 2);
+    ctx.fillStyle = '#c8b48a';
+    ctx.fill();
+    ctx.strokeStyle = '#3a2b1d';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(hw * 0.15 - 6, hh * 0.05);
+    ctx.lineTo(hw * 0.15 + 6, hh * 0.05);
+    ctx.moveTo(hw * 0.15, hh * 0.05 - 6);
+    ctx.lineTo(hw * 0.15, hh * 0.05 + 6);
+    ctx.stroke();
+  } else if (b.type === '旅店') {
+    ctx.fillStyle = '#8a2c22';
+    ctx.fillRect(-hw - 1, -6, 9, 7);
+    ctx.fillStyle = '#f6edd4';
+    ctx.font = `bold 7px ${LABEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('酒', -hw + 3.5, -2.5);
   }
 }
 
@@ -488,57 +776,67 @@ function drawBuildings(ctx, buildings) {
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.rotate(b.angle);
-
-    // 阴影
-    ctx.fillStyle = 'rgba(43,32,22,0.22)';
-    ctx.fillRect(-b.w / 2 + 3, -b.h / 2 + 3, b.w, b.h);
-
-    // 屋顶
-    ctx.fillStyle = b.color;
-    ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
-
-    // 边框
-    ctx.strokeStyle = 'rgba(43,32,22,0.7)';
-    ctx.lineWidth = 1.6;
-    ctx.strokeRect(-b.w / 2, -b.h / 2, b.w, b.h);
-
-    // 屋脊线
-    ctx.strokeStyle = 'rgba(43,32,22,0.32)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    if (b.w >= b.h) {
-      ctx.moveTo(-b.w / 2, 0);
-      ctx.lineTo(b.w / 2, 0);
-    } else {
-      ctx.moveTo(0, -b.h / 2);
-      ctx.lineTo(0, b.h / 2);
-    }
-    ctx.stroke();
-
+    drawHouse(ctx, b);
     ctx.restore();
   }
 }
 
-function drawLabels(ctx, buildings) {
-  for (const b of buildings) {
-    // 编号（建筑内部，白字深描边，保证深色屋顶上可读）
-    ctx.font = 'bold 11px "Noto Serif SC", "Songti SC", serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(43,32,22,0.85)';
-    ctx.fillStyle = '#fff8e8';
-    ctx.strokeText(String(b.id), b.x, b.y - 1);
-    ctx.fillText(String(b.id), b.x, b.y - 1);
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
 
-    // 类型中文标注（建筑下方，带羊皮纸描边）
-    ctx.font = '11px "Noto Serif SC", "Songti SC", serif';
-    const ty = b.y + Math.max(b.w, b.h) / 2 + 12;
-    ctx.strokeStyle = 'rgba(236,224,196,0.95)';
-    ctx.lineWidth = 3;
-    ctx.strokeText(b.type, b.x, ty);
+function drawLabels(ctx, buildings) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const badges = [];
+  for (const b of buildings) {
+    const label = String(b.id);
+    ctx.font = `bold 12px ${LABEL_FONT}`;
+    const tw = ctx.measureText(label).width;
+    const bw = Math.max(16, tw + 8);
+    const bh = 16;
+    const rect = { x: b.x - bw / 2, y: b.y - bh / 2, w: bw, h: bh };
+    badges.push(rect);
+    roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 8);
+    ctx.fillStyle = 'rgba(255,248,232,0.95)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(43,32,22,0.55)';
+    ctx.stroke();
     ctx.fillStyle = '#2b2016';
-    ctx.fillText(b.type, b.x, ty);
+    ctx.fillText(label, b.x, b.y + 0.5);
+  }
+
+  ctx.font = `12px ${LABEL_FONT}`;
+  const placed = badges.map(r => ({ x: r.x - 2, y: r.y - 2, w: r.w + 4, h: r.h + 4 }));
+  for (const b of buildings) {
+    const text = b.type;
+    const tw = ctx.measureText(text).width;
+    const th = 14;
+    const candidates = [
+      { x: b.x, y: b.y + b.h / 2 + 13 },
+      { x: b.x, y: b.y - b.h / 2 - 13 },
+      { x: b.x + b.w / 2 + tw / 2 + 8, y: b.y },
+      { x: b.x - b.w / 2 - tw / 2 - 8, y: b.y },
+      { x: b.x, y: b.y + b.h / 2 + 28 },
+    ];
+    let chosen = null;
+    for (const c of candidates) {
+      const rect = { x: c.x - tw / 2 - 2, y: c.y - th / 2, w: tw + 4, h: th };
+      if (rect.x < 4 || rect.y < 4 || rect.x + rect.w > CANVAS_SIZE - 4 || rect.y + rect.h > CANVAS_SIZE - 4) continue;
+      if (placed.some(p => rectsOverlap(rect, p))) continue;
+      const blocked = buildings.some(o => o !== b && buildingContains(o, c.x, c.y, 0));
+      if (blocked) continue;
+      chosen = { c, rect };
+      break;
+    }
+    if (!chosen) continue;
+    placed.push(chosen.rect);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(236,224,196,0.95)';
+    ctx.strokeText(text, chosen.c.x, chosen.c.y);
+    ctx.fillStyle = '#2b2016';
+    ctx.fillText(text, chosen.c.x, chosen.c.y);
   }
 }
 
@@ -632,4 +930,9 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   syncLabels();
   generate();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      if (currentVillage) renderVillage(currentVillage, document.getElementById('villageCanvas'));
+    });
+  }
 });
