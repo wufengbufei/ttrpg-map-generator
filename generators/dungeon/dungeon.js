@@ -29,6 +29,59 @@ function randInt(min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
 function randFloat(min, max) { return rng() * (max - min) + min; }
 function chance(pct) { return rng() * 100 < pct; }
 function pick(arr) { return arr[Math.floor(rng() * arr.length)]; }
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
+// 房间旁注：只用字库里有的字，保证画布上不会缺字
+const DUNGEON_HOOKS = [
+  '箱中藏着小宝物。',
+  '东侧有一扇重木门。',
+  '池底沉着一件铁器。',
+  '顶上绘着树纹。',
+  '木箱里藏着小宝物。',
+  '一只木像，一触便发声。',
+  '半身人坐在地上，身边散着宝石。',
+  '角落里坐着一个兜面人。',
+  '墙上绘着浅色符文。',
+  '铁器空立室中，像在等人。',
+  '石台上留着已尽的烛。',
+  '地板之下有细小动静。',
+  '墙上挂着一块绘纹的破布。',
+  '深池不见其底，只余回声。',
+  '书架散了，书页上结着霜。',
+  '铁栏之中空无一人，锁却完好。',
+  '壁画上的目像在看着人。',
+  '一具石盒，盖移开了一道缝。',
+  '楼梯向下，通向更深处。',
+  '这里是地牢的后入口。',
+  '地上留着一块深色。',
+  '墙角放着破碎的木板。',
+  '桌上留着残缺的地图。',
+  '绳索从顶上垂下。',
+  '室中安静，只有水声。',
+  '一座小台，供着无名的像。',
+  '通道到这里便变窄。',
+  '地板上盖着布，下面是陷阱。',
+  '宝箱半藏在碎石后。',
+  '墙上藏着一道隐门。',
+  '墙上的烛已经点尽。',
+  '一排空牢，门却都开着。',
+  '喷泉已干，池底有小宝物。',
+  '盆中水面映出另一张面。',
+  '地板松动，下面是空的。',
+  '角落里结着密网。',
+  '墙缝里有细小的动静。',
+  '门上留着字：不可入。',
+  '室中央有一个圆池。',
+  '北侧有一段楼梯。',
+];
 
 // ---------- 单元格类型 ----------
 const EMPTY = 0, FLOOR = 1, WALL = 2, DOOR = 3, TRAP = 4, TREASURE = 5;
@@ -38,6 +91,9 @@ class Room {
     this.id = id; this.x = x; this.y = y; this.w = w; this.h = h;
     this.cx = x + w / 2; this.cy = y + h / 2;
     this.hasTrap = false; this.hasTreasure = false;
+    this.shape = 'rect';
+    this.hook = '';
+    this.hasStairs = false;
   }
   intersects(other, pad = 1) {
     return !(this.x - pad > other.x + other.w ||
@@ -265,8 +321,153 @@ class Dungeon {
       this.carveCorridor(this.rooms[i], this.rooms[j]);
     }
     this.addWalls();
-    this.placeFeatures();
     this.markEnds();
+    this.applyShapeVariety();
+    this.placeFeatures();
+    this.assignFlavor();
+  }
+
+  isWalkable(x, y) {
+    const v = this.get(x, y);
+    return v === FLOOR || v === DOOR || v === TRAP || v === TREASURE;
+  }
+
+  walkableCellInRoom(room) {
+    const cx = Math.min(room.x + room.w - 1, Math.max(room.x, Math.floor(room.cx)));
+    const cy = Math.min(room.y + room.h - 1, Math.max(room.y, Math.floor(room.cy)));
+    if (this.isWalkable(cx, cy)) return [cx, cy];
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        if (this.isWalkable(x, y)) return [x, y];
+      }
+    }
+    return null;
+  }
+
+  allRoomsReachable() {
+    if (!this.rooms.length) return true;
+    const entrance = this.rooms.find(r => r.id === this.entranceId) || this.rooms[0];
+    const start = this.walkableCellInRoom(entrance);
+    if (!start) return false;
+    const seen = new Uint8Array(this.w * this.h);
+    const q = [start];
+    seen[start[1] * this.w + start[0]] = 1;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    while (q.length) {
+      const [x, y] = q.pop();
+      for (const [dx, dy] of dirs) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!this.inBounds(nx, ny)) continue;
+        const i = ny * this.w + nx;
+        if (seen[i] || !this.isWalkable(nx, ny)) continue;
+        seen[i] = 1;
+        q.push([nx, ny]);
+      }
+    }
+    for (const room of this.rooms) {
+      const cell = this.walkableCellInRoom(room);
+      if (!cell || !seen[cell[1] * this.w + cell[0]]) return false;
+    }
+    return true;
+  }
+
+  touchesOutsideWalkable(x, y, room) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx >= room.x && nx < room.x + room.w && ny >= room.y && ny < room.y + room.h) continue;
+      if (this.isWalkable(nx, ny)) return true;
+    }
+    return false;
+  }
+
+  // 把近似正方形的房间切成圆室；切完若走不通就还原，不破坏连通
+  carveCircle(room) {
+    const cx = room.x + room.w / 2;
+    const cy = room.y + room.h / 2;
+    const rad = Math.min(room.w, room.h) / 2 - 0.08;
+    const cleared = [];
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        const v = this.get(x, y);
+        if (v !== FLOOR && v !== DOOR) continue;
+        if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= rad) continue;
+        if (this.touchesOutsideWalkable(x, y, room)) continue;
+        cleared.push([x, y, v]);
+        this.set(x, y, EMPTY);
+      }
+    }
+    return cleared;
+  }
+
+  refreshWalls() {
+    for (let i = 0; i < this.grid.length; i++) {
+      if (this.grid[i] === WALL) this.grid[i] = EMPTY;
+    }
+    this.addWalls();
+  }
+
+  applyShapeVariety() {
+    for (const room of this.rooms) room.shape = 'rect';
+    for (const room of this.rooms) {
+      if (Math.abs(room.w - room.h) > 1 || Math.min(room.w, room.h) < 6) continue;
+      if (!chance(48)) continue;
+      const cleared = this.carveCircle(room);
+      if (!cleared.length) continue;
+      this.refreshWalls();
+      if (this.allRoomsReachable()) {
+        room.shape = 'circle';
+      } else {
+        for (const [x, y, v] of cleared) this.set(x, y, v);
+        this.refreshWalls();
+      }
+    }
+  }
+
+  // 给一部分房间写一句地点注记；入口和出口必定有
+  assignFlavor() {
+    for (const room of this.rooms) {
+      room.hook = '';
+      room.hasStairs = room.id === this.entranceId || room.id === this.exitId;
+    }
+    if (!this.rooms.length) return;
+
+    const chosen = [];
+    const add = (room) => {
+      if (room && !chosen.includes(room)) chosen.push(room);
+    };
+    add(this.rooms.find(r => r.id === this.entranceId));
+    add(this.rooms.find(r => r.id === this.exitId));
+
+    const pool = this.rooms.filter(r => !chosen.includes(r));
+    shuffleInPlace(pool);
+    const scored = pool.map((room, i) => ({
+      room,
+      score: (room.hasTreasure ? 2 : 0) + (room.hasTrap ? 1 : 0),
+      i,
+    }));
+    scored.sort((a, b) => (b.score - a.score) || (a.i - b.i));
+    const cap = Math.min(8, Math.max(chosen.length, Math.round(this.rooms.length * 0.5)));
+    for (const item of scored) {
+      if (chosen.length >= cap) break;
+      add(item.room);
+    }
+
+    const hooks = DUNGEON_HOOKS.slice();
+    shuffleInPlace(hooks);
+    chosen.forEach((room, i) => { room.hook = hooks[i % hooks.length]; });
+
+    let extraStairs = 0;
+    for (const room of this.rooms) {
+      if (extraStairs >= 2) break;
+      if (room.hasStairs) continue;
+      const stairRoom = room.shape === 'circle' || (room.w >= 5 && room.h >= 5 && chance(40));
+      if (!stairRoom) continue;
+      room.hasStairs = true;
+      extraStairs++;
+    }
   }
 
   // 不消耗随机数：入口取最靠左上的房间，出口取离入口最远的房间
@@ -293,55 +494,336 @@ class Dungeon {
 
 // ---------- 渲染 ----------
 const CELL = 16;
-const SCALE_PAD = 40;
 const FEET_PER_CELL = 5;
+const CALL_W = 204;
+const PAD_X = CALL_W + 22;
+const PAD_Y = 16;
 const DUNGEON_FONT = '"Noto Serif SC", "Songti SC", "Noto Serif CJK SC", serif';
 
 function walkable(v) {
   return v === FLOOR || v === DOOR || v === TRAP || v === TREASURE;
 }
 
-function renderDungeon(dungeon, canvas) {
-  const mapH = dungeon.h * CELL;
-  canvas.width = dungeon.w * CELL;
-  canvas.height = mapH + SCALE_PAD;
-  const ctx = canvas.getContext('2d');
+function cellHash(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
 
-  ctx.fillStyle = '#1b140d';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const inRoom = (x, y) => dungeon.rooms.some(r =>
-    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
-
-  for (let y = 0; y < dungeon.h; y++) {
-    for (let x = 0; x < dungeon.w; x++) {
-      const v = dungeon.get(x, y);
-      if (v === EMPTY) continue;
-      const px = x * CELL;
-      const py = y * CELL;
-      if (v === WALL) {
-        ctx.fillStyle = '#4a3522';
-        ctx.fillRect(px, py, CELL, CELL);
-        ctx.fillStyle = '#62503a';
-        ctx.fillRect(px + 1, py + 1, CELL - 2, 3);
-        ctx.fillStyle = 'rgba(20,12,6,0.35)';
-        ctx.fillRect(px, py + CELL - 2, CELL, 2);
-        continue;
-      }
-      ctx.fillStyle = inRoom(x, y) ? '#e6d5ad' : '#cbb892';
-      ctx.fillRect(px, py, CELL, CELL);
-      ctx.strokeStyle = 'rgba(90,69,48,0.18)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(px + 1.5, py + 1.5, CELL - 3, CELL - 3);
+function isRockCell(dungeon, x, y) {
+  if (!dungeon.inBounds(x, y)) return false;
+  const v = dungeon.get(x, y);
+  if (v !== EMPTY && v !== WALL) return false;
+  const reach = 2 + (cellHash(x, y) % 4);
+  for (let dy = -reach; dy <= reach; dy++) {
+    for (let dx = -reach; dx <= reach; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > reach) continue;
+      if (dungeon.isWalkable(x + dx, y + dy)) return true;
     }
   }
+  return false;
+}
 
-  ctx.strokeStyle = 'rgba(43,32,22,0.45)';
-  ctx.lineWidth = 2;
-  for (const room of dungeon.rooms) {
-    ctx.strokeRect(room.x * CELL + 1, room.y * CELL + 1, room.w * CELL - 2, room.h * CELL - 2);
+function drawRockHatch(ctx, dungeon) {
+  const mask = new Uint8Array(dungeon.w * dungeon.h);
+  for (let y = 0; y < dungeon.h; y++) {
+    for (let x = 0; x < dungeon.w; x++) {
+      if (isRockCell(dungeon, x, y)) mask[y * dungeon.w + x] = 1;
+    }
   }
+  const rockAt = (px, py) => {
+    if (px < 0 || py < 0 || px >= dungeon.w * CELL || py >= dungeon.h * CELL) return false;
+    const cx = Math.min(dungeon.w - 1, Math.floor(px / CELL));
+    const cy = Math.min(dungeon.h - 1, Math.floor(py / CELL));
+    return mask[cy * dungeon.w + cx] === 1;
+  };
+  ctx.save();
+  ctx.strokeStyle = 'rgba(48, 36, 24, 0.66)';
+  ctx.lineWidth = 0.85;
+  ctx.beginPath();
+  const w = dungeon.w * CELL;
+  const h = dungeon.h * CELL;
+  const gap = 3.5;
+  const sample = 2;
+  const trace = (yAt) => {
+    for (let b = -w; b < h + w; b += gap) {
+      let pen = false;
+      let lastX = 0;
+      let lastY = 0;
+      for (let x = 0; x <= w; x += sample) {
+        const y = yAt(x, b);
+        const inside = y >= 0 && y < h && rockAt(Math.min(x, w - 0.5), y);
+        if (inside) {
+          if (!pen) { ctx.moveTo(x, y); pen = true; }
+          lastX = x;
+          lastY = y;
+        } else if (pen) {
+          ctx.lineTo(lastX, lastY);
+          pen = false;
+        }
+      }
+      if (pen) ctx.lineTo(lastX, lastY);
+    }
+  };
+  trace((x, b) => x + b);
+  trace((x, b) => -x + b);
+  ctx.stroke();
 
+  ctx.beginPath();
+  ctx.fillStyle = 'rgba(42, 30, 18, 0.5)';
+  for (let y = 0; y < dungeon.h; y++) {
+    for (let x = 0; x < dungeon.w; x++) {
+      if (!mask[y * dungeon.w + x]) continue;
+      const hsh = cellHash(x, y);
+      if (hsh % 11 !== 0) continue;
+      const px = x * CELL + (hsh % 8);
+      const py = y * CELL + ((hsh >>> 4) % 8);
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + 5, py + 1.2);
+      ctx.lineTo(px + 1.4, py + 4.5);
+      ctx.closePath();
+    }
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFloors(ctx, dungeon) {
+  ctx.fillStyle = '#f6efe0';
+  for (let y = 0; y < dungeon.h; y++) {
+    for (let x = 0; x < dungeon.w; x++) {
+      if (!dungeon.isWalkable(x, y)) continue;
+      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+    }
+  }
+  ctx.save();
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = 'rgba(78, 58, 36, 0.38)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  const edgeOn = (x, y, vertical) => {
+    if (vertical) return dungeon.isWalkable(x, y) || dungeon.isWalkable(x - 1, y);
+    return dungeon.isWalkable(x, y) || dungeon.isWalkable(x, y - 1);
+  };
+  for (let x = 0; x <= dungeon.w; x++) {
+    let y = 0;
+    while (y < dungeon.h) {
+      if (!edgeOn(x, y, true)) { y++; continue; }
+      const y0 = y;
+      while (y < dungeon.h && edgeOn(x, y, true)) y++;
+      ctx.moveTo(x * CELL + 0.5, y0 * CELL);
+      ctx.lineTo(x * CELL + 0.5, y * CELL);
+    }
+  }
+  for (let y = 0; y <= dungeon.h; y++) {
+    let x = 0;
+    while (x < dungeon.w) {
+      if (!edgeOn(x, y, false)) { x++; continue; }
+      const x0 = x;
+      while (x < dungeon.w && edgeOn(x, y, false)) x++;
+      ctx.moveTo(x0 * CELL, y * CELL + 0.5);
+      ctx.lineTo(x * CELL, y * CELL + 0.5);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawInkOutline(ctx, dungeon) {
+  ctx.beginPath();
+  ctx.lineWidth = 2.3;
+  ctx.strokeStyle = '#241910';
+  ctx.lineJoin = 'miter';
+  ctx.lineCap = 'butt';
+  for (let y = 0; y < dungeon.h; y++) {
+    for (let x = 0; x < dungeon.w; x++) {
+      if (!dungeon.isWalkable(x, y)) continue;
+      const px = x * CELL;
+      const py = y * CELL;
+      if (!dungeon.isWalkable(x, y - 1)) { ctx.moveTo(px, py); ctx.lineTo(px + CELL, py); }
+      if (!dungeon.isWalkable(x, y + 1)) { ctx.moveTo(px, py + CELL); ctx.lineTo(px + CELL, py + CELL); }
+      if (!dungeon.isWalkable(x - 1, y)) { ctx.moveTo(px, py); ctx.lineTo(px, py + CELL); }
+      if (!dungeon.isWalkable(x + 1, y)) { ctx.moveTo(px + CELL, py); ctx.lineTo(px + CELL, py + CELL); }
+    }
+  }
+  ctx.stroke();
+}
+
+function drawStairsGlyph(ctx, x, y, vertical, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (vertical) ctx.rotate(Math.PI / 2);
+  ctx.strokeStyle = color || '#2b2016';
+  ctx.lineWidth = 1.45;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-8, i * 3.1);
+    ctx.lineTo(8, i * 3.1);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawExtraStairs(ctx, dungeon) {
+  for (const room of dungeon.rooms) {
+    if (!room.hasStairs) continue;
+    if (room.id === dungeon.entranceId || room.id === dungeon.exitId) continue;
+    const x = room.cx * CELL;
+    const y = room.shape === 'circle'
+      ? (room.cy + Math.min(room.w, room.h) * 0.22) * CELL
+      : (room.y + room.h - 1.15) * CELL;
+    drawStairsGlyph(ctx, x, y, false, '#2b2016');
+  }
+}
+
+function drawPaperGrain(ctx, w, h, seed) {
+  const rand = mulberry32(seed || 1);
+  ctx.save();
+  for (let i = 0; i < 1100; i++) {
+    const x = rand() * w;
+    const y = rand() * h;
+    const a = 0.025 + rand() * 0.045;
+    ctx.fillStyle = `rgba(92, 70, 42, ${a})`;
+    ctx.fillRect(x, y, rand() > 0.82 ? 1.6 : 1, 1);
+  }
+  ctx.restore();
+}
+
+function dungeonPaintSeed(dungeon) {
+  let h = 2166136261;
+  h ^= dungeon.w;
+  h = Math.imul(h, 16777619);
+  h ^= dungeon.h;
+  h = Math.imul(h, 16777619);
+  for (const room of dungeon.rooms) {
+    h ^= room.x + room.y * 131 + room.w * 17 + room.id * 911;
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function wrapCjk(text, size) {
+  const lines = [];
+  let cur = '';
+  for (const ch of text) {
+    if (cur.length >= size) {
+      lines.push(cur);
+      cur = ch;
+    } else cur += ch;
+  }
+  if (cur) lines.push(cur);
+  if (lines.length >= 2 && lines[lines.length - 1].length <= 1) {
+    const prev = lines[lines.length - 2];
+    lines[lines.length - 2] = prev.slice(0, -1);
+    lines[lines.length - 1] = prev.slice(-1) + lines[lines.length - 1];
+  }
+  return lines.length ? lines : [''];
+}
+
+function layoutCallouts(dungeon, mapW, mapH) {
+  const hooked = dungeon.rooms.filter(r => r.hook);
+  const left = [];
+  const right = [];
+  for (const room of hooked) (room.cx < dungeon.w / 2 ? left : right).push(room);
+  const moveClosest = (from, to) => {
+    let idx = 0;
+    let best = Infinity;
+    for (let i = 0; i < from.length; i++) {
+      const d = Math.abs(from[i].cx - dungeon.w / 2);
+      if (d < best) { best = d; idx = i; }
+    }
+    to.push(from.splice(idx, 1)[0]);
+  };
+  while (left.length > right.length + 2) moveClosest(left, right);
+  while (right.length > left.length + 2) moveClosest(right, left);
+
+  const placeSide = (rooms, side) => {
+    rooms.sort((a, b) => (a.cy - b.cy) || (a.cx - b.cx));
+    const prepared = rooms.map(room => {
+      const lines = wrapCjk(`${room.id}. ${room.hook}`, 14);
+      return { room, lines, side, h: lines.length * 16 + 14, w: CALL_W };
+    });
+    const gap = 8;
+    const total = prepared.reduce((s, b) => s + b.h, 0) + gap * Math.max(0, prepared.length - 1);
+    let y = PAD_Y + Math.max(0, (mapH - total) / 2);
+    if (y < 12) y = 12;
+    const x = side === 'left' ? 12 : PAD_X + mapW + 16;
+    for (const b of prepared) {
+      b.x = x;
+      b.y = y;
+      y += b.h + gap;
+    }
+    return prepared;
+  };
+  return placeSide(left, 'left').concat(placeSide(right, 'right'));
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function drawCalloutBoxes(ctx, boxes) {
+  for (const b of boxes) {
+    const edgeX = b.side === 'left'
+      ? PAD_X + b.room.x * CELL
+      : PAD_X + (b.room.x + b.room.w) * CELL;
+    const edgeY = PAD_Y + b.room.cy * CELL;
+    const x1 = b.side === 'left' ? b.x + b.w : b.x;
+    const y1 = b.y + Math.min(b.h / 2, 18);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(edgeX, edgeY);
+    ctx.strokeStyle = 'rgba(36, 28, 20, 0.72)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(edgeX, edgeY, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#241910';
+    ctx.fill();
+  }
+  for (const b of boxes) {
+    roundRectPath(ctx, b.x, b.y, b.w, b.h, 2);
+    ctx.fillStyle = 'rgba(255, 251, 242, 0.97)';
+    ctx.fill();
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = '#2b2016';
+    ctx.stroke();
+    ctx.font = `13px ${DUNGEON_FONT}`;
+    ctx.fillStyle = '#2b2016';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    b.lines.forEach((line, i) => {
+      ctx.fillText(line, b.x + 8, b.y + 13 + i * 16);
+    });
+  }
+}
+
+function renderDungeon(dungeon, canvas) {
+  const mapW = dungeon.w * CELL;
+  const mapH = dungeon.h * CELL;
+  const boxes = layoutCallouts(dungeon, mapW, mapH);
+  let maxY = PAD_Y + mapH;
+  for (const b of boxes) maxY = Math.max(maxY, b.y + b.h);
+  canvas.width = PAD_X + mapW + PAD_X;
+  canvas.height = maxY + 18 + 36;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#f3ead6';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPaperGrain(ctx, canvas.width, canvas.height, dungeonPaintSeed(dungeon));
+
+  ctx.save();
+  ctx.translate(PAD_X, PAD_Y);
+  drawRockHatch(ctx, dungeon);
+  drawFloors(ctx, dungeon);
+  drawInkOutline(ctx, dungeon);
   for (let y = 0; y < dungeon.h; y++) {
     for (let x = 0; x < dungeon.w; x++) {
       const v = dungeon.get(x, y);
@@ -350,18 +832,22 @@ function renderDungeon(dungeon, canvas) {
       else if (v === TREASURE) drawChestGlyph(ctx, x, y);
     }
   }
-
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  drawExtraStairs(ctx, dungeon);
   for (const room of dungeon.rooms) {
-    const tx = (room.x + 0.5) * CELL;
-    const ty = (room.y + 0.5) * CELL;
-    drawDungeonBadge(ctx, tx, ty, String(room.id));
     if (room.id === dungeon.entranceId) drawDungeonEnd(ctx, dungeon, room, '入口', '#2f6b3a');
     else if (room.id === dungeon.exitId) drawDungeonEnd(ctx, dungeon, room, '出口', '#8a2c22');
   }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const room of dungeon.rooms) {
+    const tx = (room.x + (room.w <= 4 ? room.w / 2 : 0.75)) * CELL;
+    const ty = (room.y + (room.h <= 4 ? room.h / 2 : 0.75)) * CELL;
+    drawDungeonBadge(ctx, tx, ty, String(room.id));
+  }
+  ctx.restore();
 
-  drawDungeonScale(ctx, mapH);
+  drawCalloutBoxes(ctx, boxes);
+  drawDungeonScale(ctx, canvas.height);
 }
 
 function nearestMapSide(dungeon, room) {
@@ -420,19 +906,24 @@ function drawDungeonEnd(ctx, dungeon, room, label, color) {
     ctx.stroke();
   }
 
+  ctx.restore();
+
+  ctx.save();
   ctx.font = `bold 12px ${DUNGEON_FONT}`;
   const tw = ctx.measureText(label).width;
   let lx = side === 'left' || side === 'right' ? x1 : x2;
   let ly = side === 'top' || side === 'bottom' ? y1 : y2 - 16;
-  if (side === 'left') lx = 8 + tw / 2;
-  if (side === 'right') lx = dungeon.w * CELL - 8 - tw / 2;
+  if (side === 'left') { lx = 8 + tw / 2; ly = y1 - 14; }
+  if (side === 'right') { lx = dungeon.w * CELL - 8 - tw / 2; ly = y1 - 14; }
   if (side === 'top') ly = 14;
   if (side === 'bottom') ly = dungeon.h * CELL - 14;
   lx = Math.max(8 + tw / 2, Math.min(dungeon.w * CELL - 8 - tw / 2, lx));
   ly = Math.max(12, Math.min(dungeon.h * CELL - 12, ly));
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = 'rgba(255,248,232,0.95)';
+  ctx.fillStyle = 'rgba(255,248,232,0.96)';
   ctx.fillRect(lx - tw / 2 - 5, ly - 9, tw + 10, 18);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(lx - tw / 2 - 5, ly - 9, tw + 10, 18);
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -539,15 +1030,17 @@ function drawChestGlyph(ctx, x, y) {
   ctx.fillRect(cx - 2, cy - 2, 4, 5);
 }
 
-function drawDungeonScale(ctx, mapH) {
+function drawDungeonScale(ctx, canvasH) {
   const cells = 4;
   const bar = cells * CELL;
-  const x = 16;
-  const y = mapH + 24;
-  ctx.fillStyle = 'rgba(243,233,207,0.95)';
-  ctx.fillRect(8, mapH + 8, bar + 108, 26);
+  const x = 28;
+  const y = canvasH - 20;
+  ctx.fillStyle = 'rgba(255,248,232,0.94)';
+  ctx.fillRect(x - 12, y - 14, bar + 86, 26);
   ctx.strokeStyle = '#2b2016';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.3;
+  ctx.strokeRect(x - 12, y - 14, bar + 86, 26);
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x + bar, y);
@@ -573,9 +1066,12 @@ function renderRoomInfo(dungeon, container) {
     const tags = [];
     if (room.id === dungeon.entranceId) tags.push('入口');
     if (room.id === dungeon.exitId) tags.push('出口');
-    if (room.hasTrap) tags.push('⚠ 陷阱');
-    if (room.hasTreasure) tags.push('💰 宝藏');
-    div.textContent = `房间 ${room.id}：${room.w}×${room.h} 格${tags.length ? '　' + tags.join(' ') : ''}`;
+    if (room.shape === 'circle') tags.push('圆形');
+    if (room.hasStairs) tags.push('楼梯');
+    if (room.hasTrap) tags.push('陷阱');
+    if (room.hasTreasure) tags.push('宝藏');
+    const hook = room.hook ? `　${room.hook}` : '';
+    div.textContent = `房间 ${room.id}：${room.w}×${room.h} 格${tags.length ? '　' + tags.join(' ') : ''}${hook}`;
     container.appendChild(div);
   }
 }
@@ -619,15 +1115,11 @@ function generate() {
     seedNum = Math.floor(Math.random() * 1e9);
     document.getElementById('seedInput').value = String(seedNum);
   }
-  rng = mulberry32(seedNum);
-
-  const dungeon = new Dungeon(opts);
-  dungeon.generate();
-  currentDungeon = dungeon;
+  currentDungeon = createDungeon(opts, seedNum);
 
   const canvas = document.getElementById('dungeonCanvas');
-  renderDungeon(dungeon, canvas);
-  renderRoomInfo(dungeon, document.getElementById('roomInfo'));
+  renderDungeon(currentDungeon, canvas);
+  renderRoomInfo(currentDungeon, document.getElementById('roomInfo'));
 }
 
 function exportPng() {
@@ -638,18 +1130,35 @@ function exportPng() {
   link.click();
 }
 
-function exportTxt() {
-  if (!currentDungeon) return;
-  let text = `地牢清单（种子：${document.getElementById('seedInput').value}）\n`;
-  text += `网格：${currentDungeon.w} × ${currentDungeon.h}　房间数：${currentDungeon.rooms.length}\n\n`;
-  for (const room of currentDungeon.rooms) {
+function buildDungeonText(dungeon, seedText) {
+  let text = `地牢清单（种子：${seedText}）\n`;
+  text += `网格：${dungeon.w} × ${dungeon.h}　房间数：${dungeon.rooms.length}\n\n`;
+  for (const room of dungeon.rooms) {
     const tags = [];
-    if (room.id === currentDungeon.entranceId) tags.push('入口');
-    if (room.id === currentDungeon.exitId) tags.push('出口');
+    if (room.id === dungeon.entranceId) tags.push('入口');
+    if (room.id === dungeon.exitId) tags.push('出口');
+    if (room.shape === 'circle') tags.push('圆形');
+    if (room.hasStairs) tags.push('楼梯');
     if (room.hasTrap) tags.push('陷阱');
     if (room.hasTreasure) tags.push('宝藏');
-    text += `房间 ${room.id}：尺寸 ${room.w}×${room.h}，位置 (${room.x}, ${room.y})${tags.length ? '，含：' + tags.join('、') : ''}\n`;
+    text += `房间 ${room.id}：尺寸 ${room.w}×${room.h}，位置 (${room.x}, ${room.y})`;
+    if (tags.length) text += '，含：' + tags.join('、');
+    if (room.hook) text += `\n    ${room.hook}`;
+    text += '\n';
   }
+  return text;
+}
+
+function createDungeon(opts, seed) {
+  rng = mulberry32(seed >>> 0);
+  const dungeon = new Dungeon(opts);
+  dungeon.generate();
+  return dungeon;
+}
+
+function exportTxt() {
+  if (!currentDungeon) return;
+  const text = buildDungeonText(currentDungeon, document.getElementById('seedInput').value || 'random');
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const link = document.createElement('a');
   link.download = `地牢清单_${document.getElementById('seedInput').value || 'random'}.txt`;
@@ -668,6 +1177,9 @@ if (typeof module !== 'undefined' && module.exports) {
     DOOR,
     TRAP,
     TREASURE,
+    DUNGEON_HOOKS,
+    createDungeon,
+    buildDungeonText,
   };
 }
 
