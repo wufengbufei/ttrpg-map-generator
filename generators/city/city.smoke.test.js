@@ -16,6 +16,7 @@ const {
   hashStringToSeed,
   normalizeCityOptions,
   buildCityText,
+  buildScenery,
   CANVAS_SIZE,
 } = require('./city.js');
 
@@ -133,6 +134,7 @@ function checkCity(city, combo, label) {
   for (const block of city.blocks) {
     check(Number.isInteger(block.id) && block.id > lastId, `${label} 街区编号未递增：${block.id}`);
     lastId = block.id;
+    check(typeof block.name === 'string' && block.name.length > 0, `${label} 街区 ${block.id} 没有名字`);
     check(block.polygon.length >= 3, `${label} 街区 ${block.id} 顶点不足`);
     check(block.area > 0, `${label} 街区 ${block.id} 面积为 0`);
     checkPolygonBounds(block.polygon, `${label} 街区 ${block.id}`);
@@ -141,6 +143,8 @@ function checkCity(city, combo, label) {
   }
   check(city.centralBlock && city.centralBlock.type === '中央广场',
     `${label} 缺少中央广场街区`);
+  const names = city.blocks.map(b => b.name);
+  check(new Set(names).size === names.length, `${label} 街区名有重复`);
 
   // 建筑归属与数量
   for (const b of city.buildings) {
@@ -175,6 +179,8 @@ function checkCity(city, combo, label) {
     check(city.wall && city.wall.polygon.length >= 3, `${label} 开启城墙但未生成墙体`);
     check(city.wall.gates.length === combo.roadCount,
       `${label} 城门数量异常：期望 ${combo.roadCount}，实际 ${city.wall.gates.length}`);
+    check(city.wall.towers && city.wall.towers.length >= 6,
+      `${label} 城墙圆塔过少：${city.wall.towers ? city.wall.towers.length : 0}`);
     checkPolygonBounds(city.wall.polygon, `${label} 城墙`);
   } else {
     check(city.wall === null, `${label} 关闭城墙但仍有墙体`);
@@ -249,6 +255,7 @@ function snapshot(city) {
     blocks: city.blocks.map(b => ({
       id: b.id,
       type: b.type,
+      name: b.name,
       polygon: b.polygon,
       landmarkPolygon: b.landmarkPolygon,
       buildingCount: b.buildingCount,
@@ -373,7 +380,25 @@ runCase('TXT 清单包含全部街区与建筑数', () => {
   }
   check((text.match(/约 \d+ 栋建筑/g) || []).length === city.blocks.length,
     '清单街区行数不一致');
+  for (const block of city.blocks) {
+    check(text.includes(block.name), `清单缺少街区名 ${block.name}`);
+  }
   return `${text.split('\n').length} 行`;
+});
+runCase('街区名与城外景物随种子稳定', () => {
+  const a = createCity({ blockCount: 36, roadCount: 6, subdivision: 5, wallEnabled: true }, 13579);
+  const b = createCity({ blockCount: 36, roadCount: 6, subdivision: 5, wallEnabled: true }, 13579);
+  check(a.blocks.every(block => block.name && block.name.length > 0), '存在空街区名');
+  check(a.blocks.map(block => block.name).join('|') === b.blocks.map(block => block.name).join('|'), '同一种子街区名不一致');
+  const scA = buildScenery(a);
+  const scB = buildScenery(b);
+  check(scA.plots.length >= 1, '城外没有地块');
+  check(typeof scA.water === 'boolean', '水面标记不是布尔值');
+  check(JSON.stringify(scA) === JSON.stringify(scB), '同一种子的城外景物不一致');
+  const other = buildScenery(createCity({ blockCount: 36, roadCount: 6, subdivision: 5, wallEnabled: true }, 13580));
+  check(JSON.stringify(scA) !== JSON.stringify(other) || a.blocks[0].name !== createCity({ blockCount: 36, roadCount: 6, subdivision: 5, wallEnabled: true }, 13580).blocks[0].name,
+    '不同种子的街区名和景物都相同');
+  return `${a.blocks.length} 个名字，水面 ${scA.water ? '有' : '无'}`;
 });
 
 // ---------- 汇总 ----------

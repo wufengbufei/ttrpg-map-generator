@@ -85,6 +85,9 @@ class Village {
     this.fence = null;
     this.ground = null;
     this.trees = [];
+    this.fields = [];
+    this.name = '';
+    this.population = 0;
   }
 
   generate() {
@@ -104,6 +107,8 @@ class Village {
     this.ground = this.buildGround(villageRadius);
     if (fenceEnabled) this.fence = this.buildFence(villageRadius);
     this.trees = this.buildTrees(villageRadius);
+    this.fields = this.buildFields(villageRadius);
+    this.assignIdentity();
   }
 
   // 随机点分布：极坐标 + 最小间距拒绝采样，近似均匀散开
@@ -318,25 +323,128 @@ class Village {
     return corners;
   }
 
-  // 村庄外围点缀树木
+  // 村庄外围的树丛：几团圆叶叠成扇贝边
   buildTrees(radius) {
     const trees = [];
-    const target = 26;
+    const target = 11;
     let tries = 0;
-    while (trees.length < target && tries < target * 40) {
+    while (trees.length < target && tries < target * 50) {
       tries++;
       const a = rng() * Math.PI * 2;
-      const r = randFloat(radius + 42, radius + 128);
+      const r = randFloat(radius + 36, radius + 130);
       const x = CX + Math.cos(a) * r;
       const y = CY + Math.sin(a) * r;
-      if (x < 30 || x > CANVAS_SIZE - 30 || y < 30 || y > CANVAS_SIZE - 30) continue;
+      if (x < 28 || x > CANVAS_SIZE - 28 || y < 28 || y > CANVAS_SIZE - 28) continue;
+      if (x < 210 && y < 96) continue;
       let ok = true;
       for (const t of trees) {
-        if (Math.hypot(x - t.x, y - t.y) < 28) { ok = false; break; }
+        if (Math.hypot(x - t.x, y - t.y) < 46) { ok = false; break; }
       }
-      if (ok) trees.push({ x, y, s: randFloat(7, 13) });
+      if (!ok) continue;
+      const s = randFloat(16, 28);
+      const lobes = [];
+      const n = randInt(5, 7);
+      for (let i = 0; i < n; i++) {
+        const ang = (i / n) * Math.PI * 2 + randFloat(-0.25, 0.25);
+        const dist = randFloat(s * 0.15, s * 0.55);
+        lobes.push({
+          dx: Math.cos(ang) * dist,
+          dy: Math.sin(ang) * dist,
+          r: randFloat(s * 0.48, s * 0.82),
+        });
+      }
+      trees.push({ x, y, s, lobes });
     }
     return trees;
+  }
+
+  buildFields(radius) {
+    const fields = [];
+    const target = Math.max(4, Math.round(radius / 60));
+    let tries = 0;
+    while (fields.length < target && tries < target * 50) {
+      tries++;
+      const ang = rng() * Math.PI * 2;
+      const dist = randFloat(radius * 0.58, Math.min(radius + 72, CANVAS_SIZE * 0.46));
+      const x = CX + Math.cos(ang) * dist;
+      const y = CY + Math.sin(ang) * dist;
+      const field = {
+        x,
+        y,
+        w: randInt(40, 72),
+        h: randInt(30, 54),
+        angle: ang + Math.PI / 2 + randFloat(-0.4, 0.4),
+        kind: rng() < 0.62 ? 'field' : 'orchard',
+        rows: randInt(4, 7),
+      };
+      if (!this.fieldFits(field, fields)) continue;
+      fields.push(field);
+    }
+    if (!fields.length) {
+      let best = null;
+      let bestD = -1;
+      for (let k = 0; k < 24; k++) {
+        const a = (k / 24) * Math.PI * 2;
+        const x = CX + Math.cos(a) * (radius * 0.72);
+        const y = CY + Math.sin(a) * (radius * 0.72);
+        let dmin = Infinity;
+        for (const b of this.buildings) dmin = Math.min(dmin, Math.hypot(b.x - x, b.y - y));
+        if (dmin > bestD) { bestD = dmin; best = { x, y }; }
+      }
+      fields.push({
+        x: best ? best.x : 80,
+        y: best ? best.y : 80,
+        w: 40,
+        h: 30,
+        angle: 0.35,
+        kind: 'field',
+        rows: 5,
+      });
+    }
+    return fields;
+  }
+
+  fieldCorners(f) {
+    const c = Math.cos(f.angle);
+    const s = Math.sin(f.angle);
+    const pts = [];
+    for (const [sx, sy] of [[-f.w / 2, -f.h / 2], [f.w / 2, -f.h / 2], [f.w / 2, f.h / 2], [-f.w / 2, f.h / 2]]) {
+      pts.push({ x: f.x + sx * c - sy * s, y: f.y + sx * s + sy * c });
+    }
+    return pts;
+  }
+
+  fieldFits(field, others) {
+    const corners = this.fieldCorners(field);
+    const pts = corners.concat([{ x: field.x, y: field.y }]);
+    for (const p of pts) {
+      if (p.x < 16 || p.y < 16 || p.x > CANVAS_SIZE - 16 || p.y > CANVAS_SIZE - 16) return false;
+      if (p.x < 200 && p.y < 92) return false;
+    }
+    for (const b of this.buildings) {
+      if (pointInPolygon({ x: b.x, y: b.y }, corners)) return false;
+      if (buildingContains(b, field.x, field.y, 8)) return false;
+      for (const c of corners) {
+        if (buildingContains(b, c.x, c.y, 2)) return false;
+      }
+    }
+    for (const other of others) {
+      if (Math.hypot(other.x - field.x, other.y - field.y) < (field.w + other.w) * 0.42) return false;
+    }
+    for (const tree of this.trees) {
+      if (Math.hypot(tree.x - field.x, tree.y - field.y) < tree.s + 18) return false;
+    }
+    return true;
+  }
+
+  assignIdentity() {
+    const family = ['林', '何', '石', '白', '海', '高', '方', '文', '安', '松'];
+    const place = ['石', '海', '林', '原', '港', '岸', '坡', '门', '地', '泉'];
+    const suffix = rng() < 0.5 ? '村' : '庄';
+    if (rng() < 0.55) this.name = pick(family) + '家' + suffix;
+    else this.name = pick(family) + pick(place) + suffix;
+    const people = this.buildings.length * (8 + Math.floor(rng() * 8)) + 18 + Math.floor(rng() * 24);
+    this.population = Math.max(40, Math.round(people / 10) * 10);
   }
 }
 
@@ -382,27 +490,18 @@ function renderVillage(village, canvas) {
   canvas.height = CANVAS_SIZE;
   const ctx = canvas.getContext('2d');
 
-  // 羊皮纸底色
-  ctx.fillStyle = '#ece0c4';
+  ctx.fillStyle = '#e7e0c8';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // 地面空地
-  drawPolygon(ctx, village.ground, '#dfcd9d', 'rgba(43,32,22,0.12)', 2);
-
-  // 树木
+  if (village.ground) drawPolygon(ctx, village.ground, '#e4efd4', 'rgba(70,90,50,0.2)', 2);
+  drawStipple(ctx, village.ground);
+  for (const field of village.fields || []) drawField(ctx, field);
   for (const t of village.trees) drawTree(ctx, t);
-
-  // 道路（画在围栏数据可用之后，弯道会避开建筑与围栏）
   for (const road of village.roads) drawRoad(ctx, village, road);
-
-  // 围栏
   if (village.fence) drawFence(ctx, village.fence);
-
-  // 建筑
   drawBuildings(ctx, village.buildings);
-
-  // 图例字号 / 编号 / 类型标注
   drawLabels(ctx, village.buildings);
+  drawVillageTitle(ctx, village);
 }
 
 function drawPolygon(ctx, pts, fill, stroke, lineWidth) {
@@ -421,18 +520,108 @@ function drawPolygon(ctx, pts, fill, stroke, lineWidth) {
 }
 
 function drawTree(ctx, t) {
-  ctx.fillStyle = 'rgba(43,32,22,0.20)';
+  const lobes = t.lobes && t.lobes.length ? t.lobes : [{ dx: 0, dy: 0, r: t.s }];
+  ctx.save();
+  ctx.fillStyle = 'rgba(43,32,22,0.18)';
   ctx.beginPath();
-  ctx.ellipse(t.x + 2, t.y + 3, t.s * 0.9, t.s * 0.65, 0, 0, Math.PI * 2);
+  ctx.ellipse(t.x + 3, t.y + t.s * 0.55, t.s * 1.15, t.s * 0.42, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#6e7f4a';
+  ctx.shadowColor = 'rgba(43,32,22,0.2)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 3;
+  for (let i = 0; i < lobes.length; i++) {
+    const lobe = lobes[i];
+    ctx.beginPath();
+    ctx.arc(t.x + lobe.dx, t.y + lobe.dy, lobe.r, 0, Math.PI * 2);
+    ctx.fillStyle = i % 2 ? '#5d7344' : '#3f562e';
+    ctx.fill();
+  }
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#2f4524';
+  ctx.lineWidth = 1.15;
+  for (const lobe of lobes) {
+    ctx.beginPath();
+    ctx.arc(t.x + lobe.dx, t.y + lobe.dy, lobe.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawStipple(ctx, ground) {
+  if (!ground || ground.length < 3) return;
+  ctx.save();
   ctx.beginPath();
-  ctx.arc(t.x, t.y, t.s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#5c6b3e';
+  ctx.moveTo(ground[0].x, ground[0].y);
+  for (let i = 1; i < ground.length; i++) ctx.lineTo(ground[i].x, ground[i].y);
+  ctx.closePath();
+  ctx.clip();
+  let h = 2166136261;
+  for (const p of ground) {
+    h ^= Math.round(p.x);
+    h = Math.imul(h, 16777619);
+    h ^= Math.round(p.y);
+    h = Math.imul(h, 16777619);
+  }
+  const rand = mulberry32(h >>> 0);
+  for (let i = 0; i < 980; i++) {
+    const x = rand() * CANVAS_SIZE;
+    const y = rand() * CANVAS_SIZE;
+    ctx.fillStyle = rand() > 0.5 ? 'rgba(74, 102, 48, 0.24)' : 'rgba(98, 120, 62, 0.15)';
+    ctx.fillRect(x, y, 1.6, 1.6);
+  }
+  ctx.restore();
+}
+
+function drawField(ctx, f) {
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.angle);
+  ctx.shadowColor = 'rgba(43,32,22,0.16)';
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = f.kind === 'orchard' ? '#d7e4c4' : '#d2be96';
+  ctx.fillRect(-f.w / 2, -f.h / 2, f.w, f.h);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(70,50,30,0.55)';
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(-f.w / 2, -f.h / 2, f.w, f.h);
+  ctx.save();
   ctx.beginPath();
-  ctx.arc(t.x - t.s * 0.25, t.y - t.s * 0.25, t.s * 0.55, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.rect(-f.w / 2 + 2, -f.h / 2 + 2, f.w - 4, f.h - 4);
+  ctx.clip();
+  if (f.kind === 'orchard') {
+    const cols = Math.max(2, Math.round(f.w / 16));
+    const rows = Math.max(2, Math.round(f.h / 16));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const px = -f.w / 2 + ((c + 0.5) * f.w) / cols;
+        const py = -f.h / 2 + ((r + 0.5) * f.h) / rows;
+        ctx.fillStyle = '#3f562e';
+        ctx.beginPath();
+        ctx.arc(px, py, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#6d8a48';
+        ctx.beginPath();
+        ctx.arc(px - 1.2, py - 1.1, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else {
+    ctx.strokeStyle = 'rgba(96, 68, 36, 0.5)';
+    ctx.lineWidth = 1;
+    const rows = f.rows || 5;
+    for (let r = 1; r < rows; r++) {
+      const py = -f.h / 2 + (f.h * r) / rows;
+      ctx.beginPath();
+      ctx.moveTo(-f.w / 2 + 3, py);
+      ctx.lineTo(f.w / 2 - 3, py);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.restore();
 }
 
 const LABEL_FONT = '"Noto Serif SC", "Songti SC", "Noto Serif CJK SC", serif';
@@ -538,8 +727,9 @@ function drawRoad(ctx, village, road) {
   const ctrl = clearRoadControl(a, b, road.ctrl, village.buildings, village.fence);
   const segments = roadPolylines(a, b, ctrl, village.buildings);
   for (const pts of segments) {
-    strokePolyline(ctx, pts, '#8a6d4a', road.width + 2.5);
-    strokePolyline(ctx, pts, '#c9a97a', road.width);
+    strokePolyline(ctx, pts, '#6a4b32', road.width + 2.2);
+    strokePolyline(ctx, pts, '#a67c52', road.width);
+    strokePolyline(ctx, pts, 'rgba(214, 176, 122, 0.8)', Math.max(2, road.width * 0.28));
   }
 }
 
@@ -656,13 +846,16 @@ function drawHouse(ctx, b) {
   const hw = w / 2;
   const hh = h / 2;
 
-  ctx.fillStyle = 'rgba(43,32,22,0.20)';
-  roundRectPath(ctx, -hw + 3, -hh + 4, w, h, 2);
-  ctx.fill();
-
+  ctx.save();
+  ctx.shadowColor = 'rgba(43,32,22,0.30)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 4;
   ctx.fillStyle = '#f3e6c8';
   roundRectPath(ctx, -hw, -hh, w, h, 1.5);
   ctx.fill();
+  ctx.restore();
+  roundRectPath(ctx, -hw, -hh, w, h, 1.5);
   ctx.strokeStyle = '#3a2b1d';
   ctx.lineWidth = 1.4;
   ctx.stroke();
@@ -816,14 +1009,45 @@ function drawLabels(ctx, buildings) {
   }
 }
 
+function drawVillageTitle(ctx, village) {
+  const name = village.name || '村庄';
+  const pop = `约 ${village.population || 0} 人`;
+  ctx.save();
+  ctx.font = `bold 28px ${LABEL_FONT}`;
+  const nw = ctx.measureText(name).width;
+  ctx.font = `16px ${LABEL_FONT}`;
+  const pw = ctx.measureText(pop).width;
+  const w = Math.max(nw, pw) + 28;
+  roundRectPath(ctx, 16, 14, w, 70, 6);
+  ctx.fillStyle = 'rgba(247, 242, 226, 0.92)';
+  ctx.fill();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(43,32,22,0.35)';
+  ctx.stroke();
+  ctx.fillStyle = '#2b2016';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = `bold 28px ${LABEL_FONT}`;
+  ctx.fillText(name, 28, 22);
+  ctx.font = `16px ${LABEL_FONT}`;
+  ctx.fillText(pop, 28, 56);
+  ctx.restore();
+}
+
 function renderBuildingInfo(village, container) {
   container.innerHTML = '';
   const title = document.createElement('div');
-  title.innerHTML = `<strong>共 ${village.buildings.length} 栋建筑</strong>`;
+  title.innerHTML = `<strong>${village.name} · 约 ${village.population} 人 · 共 ${village.buildings.length} 栋建筑</strong>`;
   container.appendChild(title);
   for (const b of village.buildings) {
     const div = document.createElement('div');
     div.textContent = `建筑 ${b.id}：${b.type}（约 ${b.w}×${b.h} 尺）`;
+    container.appendChild(div);
+  }
+  for (let i = 0; i < (village.fields || []).length; i++) {
+    const field = village.fields[i];
+    const div = document.createElement('div');
+    div.textContent = `地块 ${i + 1}：${field.kind === 'orchard' ? '果林' : '种地'}`;
     container.appendChild(div);
   }
 }
@@ -859,15 +1083,11 @@ function generate() {
     seedNum = Math.floor(Math.random() * 1e9);
     document.getElementById('seedInput').value = String(seedNum);
   }
-  rng = mulberry32(seedNum);
-
-  const village = new Village(opts);
-  village.generate();
-  currentVillage = village;
+  currentVillage = createVillage(opts, seedNum);
 
   const canvas = document.getElementById('villageCanvas');
-  renderVillage(village, canvas);
-  renderBuildingInfo(village, document.getElementById('buildingInfo'));
+  renderVillage(currentVillage, canvas);
+  renderBuildingInfo(currentVillage, document.getElementById('buildingInfo'));
 }
 
 function exportPng() {
@@ -878,14 +1098,31 @@ function exportPng() {
   link.click();
 }
 
+function buildVillageText(village, seed) {
+  let text = `村庄建筑清单（种子：${seed}）\n`;
+  text += `村名：${village.name}　人口：约 ${village.population} 人\n`;
+  text += `建筑数量：${village.buildings.length}　村庄半径：${village.opts.villageRadius}　围栏：${village.opts.fenceEnabled ? '有' : '无'}　地块：${village.fields.length}\n\n`;
+  for (const b of village.buildings) {
+    text += `建筑 ${b.id}：${b.type}\n`;
+  }
+  text += '\n';
+  village.fields.forEach((f, i) => {
+    text += `地块 ${i + 1}：${f.kind === 'orchard' ? '果林' : '种地'}\n`;
+  });
+  return text;
+}
+
+function createVillage(opts, seed) {
+  rng = mulberry32(seed >>> 0);
+  const village = new Village(opts);
+  village.generate();
+  return village;
+}
+
 function exportTxt() {
   if (!currentVillage) return;
   const seed = document.getElementById('seedInput').value || 'random';
-  let text = `村庄建筑清单（种子：${seed}）\n`;
-  text += `建筑数量：${currentVillage.buildings.length}　村庄半径：${currentVillage.opts.villageRadius}　围栏：${currentVillage.opts.fenceEnabled ? '有' : '无'}\n\n`;
-  for (const b of currentVillage.buildings) {
-    text += `建筑 ${b.id}：${b.type}\n`;
-  }
+  const text = buildVillageText(currentVillage, seed);
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const link = document.createElement('a');
   link.download = `村庄清单_${seed}.txt`;
@@ -893,6 +1130,17 @@ function exportTxt() {
   link.click();
 }
 
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    Village,
+    createVillage,
+    buildVillageText,
+    mulberry32,
+    hashStringToSeed,
+  };
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 window.addEventListener('DOMContentLoaded', () => {
   const sliderIds = ['buildingCount', 'villageRadius', 'roadCurve', 'roadDensity'];
   sliderIds.forEach(id => document.getElementById(id).addEventListener('input', syncLabels));
@@ -912,3 +1160,4 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+}

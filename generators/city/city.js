@@ -42,10 +42,10 @@ const CX = CANVAS_SIZE / 2;
 const CY = CANVAS_SIZE / 2;
 const PLAZA_RADIUS = 30;
 
-const ROOF_COLORS = ['#c9a97a', '#b98f63', '#a8795a', '#d0b285', '#9c7a55', '#b58a6c', '#c7a07a', '#a77a56'];
+const ROOF_COLORS = ['#8a8680', '#7a7670', '#94908a', '#6e6a64', '#838078', '#75716b', '#9a958c', '#6a655e'];
 const ROAD_CASING = '#7a5a3e';
 const ROAD_FILL = '#c9a97a';
-const BLOCK_FILL = '#e4d5af';
+const BLOCK_FILL = '#efe4c8';
 const BLOCK_LINE = 'rgba(122,90,62,0.55)';
 
 const CITY_OPTIONS = {
@@ -424,6 +424,7 @@ class City {
     this.assignBlockTypes();
     this.buildBuildings();
     this.buildWall();
+    this.assignDistrictNames();
 
     this.stats = {
       blockCount: this.blocks.length,
@@ -611,6 +612,7 @@ class City {
         area,
         centroid: polygonCentroid(polygon),
         type: '居住区',
+        name: '',
         isLandmark: false,
         landmarkPolygon: null,
         buildingCount: 0,
@@ -750,25 +752,67 @@ class City {
       angle: this.roadAngles[i],
     }));
 
-    // 在相邻城门之间放置少量瞭望塔
+    // 沿城墙等距放圆塔，城门附近留空
     const towers = [];
-    const n = gates.length;
-    const stepPairs = Math.max(1, Math.ceil(n / 4));
-    for (let i = 0; i < n; i += stepPairs) {
-      const a1 = this.roadAngles[i];
-      const a2 = this.roadAngles[(i + stepPairs) % n];
-      let mid = normalizeAngle(a1 + normalizeAngle(a2 - a1) / 2);
-      if (mid === a1) mid = a1 + 0.1;
-      const hit = rayPolygonIntersection(CX, CY, mid, this.wallPolygon);
-      if (!hit) continue;
-      let clear = true;
-      for (const g of gates) {
-        if (Math.hypot(hit.x - g.x, hit.y - g.y) < 24) { clear = false; break; }
+    const spacing = 54;
+    let carry = spacing * 0.5;
+    const poly = this.wallPolygon;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 1e-6) continue;
+      let dist = carry;
+      while (dist <= len) {
+        const t = dist / len;
+        const x = a.x + (b.x - a.x) * t;
+        const y = a.y + (b.y - a.y) * t;
+        const clear = gates.every(g => Math.hypot(x - g.x, y - g.y) >= 28);
+        if (clear) towers.push({ x, y });
+        dist += spacing;
       }
-      if (clear) towers.push({ x: hit.x, y: hit.y });
+      carry = dist - len;
     }
 
     this.wall = { polygon: this.wallPolygon, gates, towers };
+  }
+
+  assignDistrictNames() {
+    const A = ['白石', '南风', '北风', '东风', '西风', '灯塔', '渔人', '霜', '海', '山岩', '松林', '泉', '河', '铁', '木', '高', '低', '深', '浅', '长', '外', '内', '上', '下', '石墙', '水', '风', '石'];
+    const B = ['坊', '里', '区', '街', '坡', '岸', '门', '港', '原', '市'];
+    const used = new Set();
+    const take = (prefixes, suffixes) => {
+      for (let n = 0; n < 24; n++) {
+        const name = pick(prefixes) + pick(suffixes);
+        if (!used.has(name)) {
+          used.add(name);
+          return name;
+        }
+      }
+      for (const a of prefixes) {
+        for (const b of suffixes) {
+          const name = a + b;
+          if (!used.has(name)) {
+            used.add(name);
+            return name;
+          }
+        }
+      }
+      let k = used.size + 1;
+      let name = '街区' + k;
+      while (used.has(name)) {
+        k++;
+        name = '街区' + k;
+      }
+      used.add(name);
+      return name;
+    };
+    for (const block of this.blocks) {
+      if (block.type === '中央广场') block.name = take(['城心', '中央', '中'], ['广场', '市']);
+      else if (block.type === '大教堂') block.name = take(A, ['堂']);
+      else if (block.type === '领主城堡') block.name = take(A, ['堡']);
+      else block.name = take(A, B);
+    }
   }
 }
 
@@ -903,21 +947,19 @@ function drawBuildings(ctx, buildings) {
     ctx.clip();
     ctx.translate(center.x, center.y);
     ctx.rotate(longestEdgeAngle(poly));
-    ctx.fillStyle = 'rgba(43,32,22,0.16)';
-    ctx.fillRect(-500, 0, 1000, 500);
-    ctx.strokeStyle = 'rgba(255,248,232,0.38)';
-    ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(-500, 0);
-    ctx.lineTo(500, 0);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(43,32,22,0.12)';
-    ctx.beginPath();
-    for (let row = -36; row <= 36; row += 6) {
-      ctx.moveTo(-500, row);
-      ctx.lineTo(500, row);
+    if (!b.isLandmark) {
+      ctx.strokeStyle = 'rgba(32,28,24,0.42)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let row = -40; row <= 40; row += 3.4) {
+        ctx.moveTo(-500, row);
+        ctx.lineTo(500, row);
+      }
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = 'rgba(20,16,12,0.2)';
+      ctx.fillRect(-500, 0, 1000, 500);
     }
-    ctx.stroke();
     ctx.restore();
 
     tracePolygon(ctx, roof);
@@ -982,15 +1024,15 @@ function strokeSegments(ctx, segments, color, width) {
 }
 
 function drawWall(ctx, wall) {
-  const gateHalf = 13;
+  const gateHalf = 24;
   const segments = samplePolygonEdges(wall.polygon, 4.5).filter(([a, b]) => {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
     return wall.gates.every(g => Math.hypot(mx - g.x, my - g.y) > gateHalf);
   });
 
-  strokeSegments(ctx, segments, '#4a3a2a', 10);
-  strokeSegments(ctx, segments, '#b7a077', 6.2);
+  strokeSegments(ctx, segments, '#3a2e24', 16);
+  strokeSegments(ctx, segments, '#c4b48a', 8);
 
   // 城垛：沿墙外侧间隔点出深色小方块
   for (let i = 0; i < segments.length; i += 4) {
@@ -1004,16 +1046,19 @@ function drawWall(ctx, wall) {
     ctx.fillRect(mx + (dx / len) * 4.5 - 1.5, my + (dy / len) * 4.5 - 1.5, 3, 3);
   }
 
-  // 瞭望塔
+  // 圆塔
   for (const t of wall.towers || []) {
     ctx.beginPath();
-    ctx.arc(t.x, t.y, 6.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#4a3a2a';
+    ctx.arc(t.x, t.y, 9, 0, Math.PI * 2);
+    ctx.fillStyle = '#3a2e24';
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#b7a077';
+    ctx.arc(t.x, t.y, 5.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#c4b48a';
     ctx.fill();
+    ctx.strokeStyle = 'rgba(43,32,22,0.65)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   // 城门两侧门楼
@@ -1021,10 +1066,10 @@ function drawWall(ctx, wall) {
     const tx = -Math.sin(g.angle);
     const ty = Math.cos(g.angle);
     for (const sign of [-1, 1]) {
-      const x = g.x + tx * sign * (gateHalf + 4);
-      const y = g.y + ty * sign * (gateHalf + 4);
+      const x = g.x + tx * sign * (gateHalf + 2);
+      const y = g.y + ty * sign * (gateHalf + 2);
       ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
       ctx.fillStyle = '#4a3a2a';
       ctx.fill();
       ctx.beginPath();
@@ -1136,59 +1181,32 @@ function rectsOverlap(a, b, pad = 0) {
 function drawBlockLabels(ctx, city) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const badges = [];
   const placed = [];
-
   for (const block of city.blocks) {
     const anchor = block.type === '中央广场'
-      ? { x: city.plaza.x, y: city.plaza.y }
+      ? { x: city.plaza.x, y: city.plaza.y + city.plaza.radius + 14 }
       : labelAnchor(block.polygon, city);
-    const clearance = roadClearanceAt(city, anchor.x, anchor.y);
-    const fontSize = clearance < 11 || block.area < 420 ? 10 : 12;
-    const badge = drawNumberBadge(ctx, anchor.x, anchor.y, String(block.id), fontSize);
-    badges.push(badge);
-    placed.push(badge);
-
-    if (block.type === '居住区') continue;
-
-    ctx.font = `bold 14px ${CITY_FONT}`;
-    const text = block.type;
-    const tw = ctx.measureText(text).width;
-    const th = 20;
-    const candidates = [];
-    if (block.type === '中央广场') {
-      for (let i = 0; i < 12; i++) {
-        const a = Math.PI / 2 + i * (Math.PI / 6);
-        candidates.push({
-          x: city.plaza.x + Math.cos(a) * (city.plaza.radius + 18),
-          y: city.plaza.y + Math.sin(a) * (city.plaza.radius + 18),
-        });
-      }
-    } else {
-      candidates.push(
-        { x: anchor.x, y: anchor.y + badge.h / 2 + 12 },
-        { x: anchor.x, y: anchor.y - badge.h / 2 - 12 },
-        { x: anchor.x + badge.w / 2 + tw / 2 + 8, y: anchor.y },
-        { x: anchor.x - badge.w / 2 - tw / 2 - 8, y: anchor.y }
-      );
+    const name = block.name || block.type;
+    let fontSize = block.area > 2200 ? 16 : block.area > 900 ? 14 : 12;
+    ctx.font = `bold ${fontSize}px ${CITY_FONT}`;
+    let width = ctx.measureText(name).width;
+    while (width > 78 && fontSize > 11) {
+      fontSize -= 1;
+      ctx.font = `bold ${fontSize}px ${CITY_FONT}`;
+      width = ctx.measureText(name).width;
     }
-    for (const c of candidates) {
-      const rect = { x: c.x - tw / 2 - 2, y: c.y - th / 2, w: tw + 4, h: th };
-      if (rect.x < 6 || rect.y < 8 || rect.x + rect.w > CANVAS_SIZE - 6 || rect.y + rect.h > CANVAS_SIZE - 8) continue;
-      if (block.type !== '中央广场' && !pointInPolygon(c, block.polygon)) continue;
-      if (roadClearanceAt(city, c.x, c.y) < 7) continue;
-      if (placed.some(p => rectsOverlap(rect, p, 2))) continue;
-      roundRectPathCity(ctx, rect.x, rect.y, rect.w, rect.h, 6);
-      ctx.fillStyle = 'rgba(255,248,232,0.96)';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = block.type === '领主城堡' ? '#6f5846' : block.type === '大教堂' ? '#8d8396' : '#8a6a42';
-      ctx.stroke();
-      ctx.fillStyle = '#4a241c';
-      ctx.fillText(text, c.x, c.y);
-      placed.push(rect);
-      break;
+    const rect = { x: anchor.x - width / 2 - 3, y: anchor.y - fontSize / 2 - 2, w: width + 6, h: fontSize + 4 };
+    if (placed.some(prev => rectsOverlap(rect, prev, 1)) && fontSize > 11) {
+      fontSize -= 1;
+      ctx.font = `bold ${fontSize}px ${CITY_FONT}`;
     }
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(244, 236, 214, 0.92)';
+    ctx.lineJoin = 'round';
+    ctx.strokeText(name, anchor.x, anchor.y);
+    ctx.fillStyle = '#2a2118';
+    ctx.fillText(name, anchor.x, anchor.y);
+    placed.push(rect);
   }
 }
 
@@ -1204,11 +1222,87 @@ function sceneryHash(city) {
   return h >>> 0;
 }
 
+function ellipseContains(px, py, ex, ey, rx, ry, ang) {
+  const dx = px - ex;
+  const dy = py - ey;
+  const c = Math.cos(-ang);
+  const s = Math.sin(-ang);
+  const lx = dx * c - dy * s;
+  const ly = dx * s + dy * c;
+  return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) <= 1;
+}
+
+// 城外田地和水面只由城廓哈希决定，不消耗生成用的随机序列
+function buildScenery(city) {
+  const rand = mulberry32(sceneryHash(city) ^ 0x51ed);
+  const water = rand() < 0.5;
+  const waterAngle = rand() * Math.PI * 2;
+  const plots = [];
+  for (let i = 0; i < 14; i++) {
+    plots.push({
+      x: rand() * CANVAS_SIZE,
+      y: rand() * CANVAS_SIZE,
+      w: 46 + rand() * 64,
+      h: 34 + rand() * 46,
+      angle: rand() * Math.PI,
+    });
+  }
+  const clumps = [];
+  for (let i = 0; i < 11; i++) {
+    clumps.push({
+      x: rand() * CANVAS_SIZE,
+      y: rand() * CANVAS_SIZE,
+      s: 11 + rand() * 12,
+      n: 4 + Math.floor(rand() * 3),
+      spin: rand() * Math.PI * 2,
+    });
+  }
+  return { water, waterAngle, plots, clumps };
+}
+
+function drawHachureRect(ctx, plot) {
+  ctx.save();
+  ctx.translate(plot.x, plot.y);
+  ctx.rotate(plot.angle);
+  ctx.fillStyle = 'rgba(214, 186, 132, 0.55)';
+  ctx.fillRect(-plot.w / 2, -plot.h / 2, plot.w, plot.h);
+  ctx.beginPath();
+  ctx.rect(-plot.w / 2 + 2, -plot.h / 2 + 2, plot.w - 4, plot.h - 4);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(110, 82, 48, 0.45)';
+  ctx.lineWidth = 1;
+  const rows = Math.max(3, Math.round(plot.h / 8));
+  for (let r = 1; r < rows; r++) {
+    const y = -plot.h / 2 + (plot.h * r) / rows;
+    ctx.beginPath();
+    ctx.moveTo(-plot.w / 2 + 3, y);
+    ctx.lineTo(plot.w / 2 - 3, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTreeClump(ctx, clump) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(43,32,22,0.16)';
+  ctx.beginPath();
+  ctx.ellipse(clump.x + 2, clump.y + clump.s * 0.45, clump.s * 1.15, clump.s * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (let i = 0; i < clump.n; i++) {
+    const a = clump.spin + (i / clump.n) * Math.PI * 2;
+    const rr = clump.s * (0.35 + (i % 2) * 0.2);
+    ctx.beginPath();
+    ctx.arc(clump.x + Math.cos(a) * rr, clump.y + Math.sin(a) * rr * 0.8, clump.s * 0.62, 0, Math.PI * 2);
+    ctx.fillStyle = i % 2 ? '#4e6838' : '#3d542c';
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawCountryside(ctx, city) {
   const edge = (city.wall && city.wall.polygon) || city.boundary;
   if (!edge || edge.length < 3) return;
-  const rand = mulberry32(sceneryHash(city) ^ 0x51ed);
-  const kind = Math.floor(rand() * 3); // 0 树林为主，1 山峦为主，2 河流为主
+  const scenery = buildScenery(city);
 
   ctx.save();
   ctx.beginPath();
@@ -1218,58 +1312,74 @@ function drawCountryside(ctx, city) {
   ctx.closePath();
   ctx.clip('evenodd');
 
-  ctx.fillStyle = '#d7e0b8';
+  ctx.fillStyle = '#e6d7b0';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  if (kind === 2) {
-    ctx.strokeStyle = '#7e9a94';
-    ctx.lineWidth = 16;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    const y0 = 40 + rand() * 80;
-    ctx.moveTo(0, y0);
-    ctx.bezierCurveTo(180, y0 + 70, 320, y0 - 40, CANVAS_SIZE, y0 + 30);
-    ctx.stroke();
-    ctx.strokeStyle = '#9bb7b0';
-    ctx.lineWidth = 6;
-    ctx.stroke();
+  ctx.strokeStyle = 'rgba(122, 96, 58, 0.28)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let d = -CANVAS_SIZE; d < CANVAS_SIZE * 2; d += 8) {
+    ctx.moveTo(0, d);
+    ctx.lineTo(CANVAS_SIZE, d - CANVAS_SIZE * 0.42);
   }
+  ctx.stroke();
 
-  const hills = kind === 1 ? 16 : 7;
-  for (let i = 0; i < hills; i++) {
-    const x = 30 + rand() * (CANVAS_SIZE - 60);
-    const y = 24 + rand() * (CANVAS_SIZE - 48);
-    const w = 28 + rand() * 36;
-    const hgt = 16 + rand() * 22;
-    ctx.fillStyle = i % 2 ? '#9a8b6a' : '#8d7d5e';
-    ctx.beginPath();
-    ctx.moveTo(x - w, y);
-    ctx.lineTo(x, y - hgt);
-    ctx.lineTo(x + w * 0.85, y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#f4efe2';
-    ctx.beginPath();
-    ctx.moveTo(x - 6, y - hgt + 8);
-    ctx.lineTo(x, y - hgt);
-    ctx.lineTo(x + 5, y - hgt + 7);
-    ctx.closePath();
-    ctx.fill();
-  }
+  for (const plot of scenery.plots) drawHachureRect(ctx, plot);
+  for (const clump of scenery.clumps) drawTreeClump(ctx, clump);
 
-  const trees = kind === 0 ? 140 : 70;
-  for (let i = 0; i < trees; i++) {
-    const x = 16 + rand() * (CANVAS_SIZE - 32);
-    const y = 16 + rand() * (CANVAS_SIZE - 32);
-    const s = 5 + rand() * 6;
-    ctx.fillStyle = rand() > 0.5 ? '#4f6a38' : '#3d552c';
+  if (scenery.water) {
+    const ang = scenery.waterAngle;
+    const rx = 340;
+    const ry = 230;
+    const ex = CX + Math.cos(ang) * (city.R + rx * 0.55);
+    const ey = CY + Math.sin(ang) * (city.R + rx * 0.55);
     ctx.beginPath();
-    ctx.arc(x, y, s, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey, rx + 16, ry + 12, ang, 0, Math.PI * 2);
+    ctx.fillStyle = '#ddd0aa';
     ctx.fill();
-    ctx.fillStyle = '#2f4324';
     ctx.beginPath();
-    ctx.arc(x - s * 0.3, y - s * 0.25, s * 0.55, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey, rx, ry, ang, 0, Math.PI * 2);
+    ctx.fillStyle = '#a9beba';
     ctx.fill();
+    ctx.strokeStyle = '#6e8884';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    const wet = [];
+    for (let i = 0; i < edge.length; i++) {
+      const p = edge[i];
+      if (ellipseContains(p.x, p.y, ex, ey, rx, ry, ang)) wet.push(p);
+    }
+    const docks = [];
+    for (const p of wet) {
+      if (docks.every(d => Math.hypot(d.x - p.x, d.y - p.y) > 70)) docks.push(p);
+      if (docks.length >= 2) break;
+    }
+    ctx.strokeStyle = '#6b4e34';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'butt';
+    for (const p of docks) {
+      const dx = p.x - CX;
+      const dy = p.y - CY;
+      const len = Math.hypot(dx, dy) || 1;
+      const ox = p.x + (dx / len) * 26;
+      const oy = p.y + (dy / len) * 26;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(ox, oy);
+      ctx.stroke();
+      const tx = -dy / len;
+      const ty = dx / len;
+      for (let k = 1; k <= 3; k++) {
+        const t = k / 4;
+        const mx = p.x + (ox - p.x) * t;
+        const my = p.y + (oy - p.y) * t;
+        ctx.beginPath();
+        ctx.moveTo(mx - tx * 7, my - ty * 7);
+        ctx.lineTo(mx + tx * 7, my + ty * 7);
+        ctx.stroke();
+      }
+    }
   }
 
   ctx.restore();
@@ -1280,8 +1390,8 @@ function renderCity(city, canvas) {
   canvas.height = CANVAS_SIZE;
   const ctx = canvas.getContext('2d');
 
-  // 羊皮纸底色，城外再铺树林 / 山峦 / 河流
-  ctx.fillStyle = '#ece0c4';
+  // 羊皮纸底色，城外铺种地；约一半种子带水面
+  ctx.fillStyle = '#efe6cf';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   drawCountryside(ctx, city);
 
@@ -1291,6 +1401,88 @@ function renderCity(city, canvas) {
   drawBuildings(ctx, city.buildings);
   if (city.wall) drawWall(ctx, city.wall);
   drawBlockLabels(ctx, city);
+  drawCityScale(ctx);
+  drawCompass(ctx);
+}
+
+function drawCityScale(ctx) {
+  const bar = 96;
+  const x = 36;
+  const y = CANVAS_SIZE - 34;
+  ctx.save();
+  roundRectPathCity(ctx, x - 12, y - 22, bar + 28, 36, 4);
+  ctx.fillStyle = 'rgba(243, 234, 211, 0.94)';
+  ctx.fill();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = '#2b2016';
+  ctx.stroke();
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + bar, y);
+  ctx.moveTo(x, y - 5);
+  ctx.lineTo(x, y + 5);
+  ctx.moveTo(x + bar / 2, y - 4);
+  ctx.lineTo(x + bar / 2, y + 4);
+  ctx.moveTo(x + bar, y - 5);
+  ctx.lineTo(x + bar, y + 5);
+  ctx.stroke();
+  ctx.font = `11px ${CITY_FONT}`;
+  ctx.fillStyle = '#2b2016';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('0', x, y - 6);
+  ctx.fillText('100', x + bar / 2, y - 6);
+  ctx.fillText('200', x + bar, y - 6);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('尺', x + bar + 8, y);
+  ctx.restore();
+}
+
+function drawCompass(ctx) {
+  const x = CANVAS_SIZE - 58;
+  const y = 58;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.arc(0, 0, 34, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(243, 234, 211, 0.94)';
+  ctx.fill();
+  ctx.strokeStyle = '#2b2016';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  const spike = (rot, len, fill) => {
+    ctx.save();
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.moveTo(0, -len);
+    ctx.lineTo(5.2, 0);
+    ctx.lineTo(0, len * 0.18);
+    ctx.lineTo(-5.2, 0);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = '#2b2016';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  };
+  spike(0, 24, '#2b2016');
+  spike(Math.PI, 20, '#f4efe2');
+  spike(Math.PI / 2, 16, '#8a7a5c');
+  spike(-Math.PI / 2, 16, '#8a7a5c');
+  ctx.beginPath();
+  ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+  ctx.fillStyle = '#2b2016';
+  ctx.fill();
+  ctx.font = `bold 12px ${CITY_FONT}`;
+  ctx.fillStyle = '#f6edd4';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('北', 0, -12);
+  ctx.restore();
 }
 
 function renderBlockInfo(city, container) {
@@ -1303,7 +1495,7 @@ function renderBlockInfo(city, container) {
 
   for (const block of city.blocks) {
     const div = document.createElement('div');
-    div.textContent = `街区 ${block.id}：${block.type} · 约 ${block.buildingCount} 栋建筑`;
+    div.textContent = `街区 ${block.id}：${block.name || block.type}（${block.type}）· 约 ${block.buildingCount} 栋建筑`;
     container.appendChild(div);
   }
 }
@@ -1316,7 +1508,7 @@ function buildCityText(city, seedText) {
   text += `实际街区：${city.blocks.length} 个　建筑总数：${city.buildings.length} 栋　` +
     `城门：${city.wall ? city.wall.gates.length : 0} 座\n\n`;
   for (const block of city.blocks) {
-    text += `街区 ${block.id}（${block.type}）：约 ${block.buildingCount} 栋建筑\n`;
+    text += `街区 ${block.id}（${block.type}）：约 ${block.buildingCount} 栋建筑　${block.name || ''}\n`;
   }
   return text;
 }
@@ -1421,6 +1613,7 @@ const CityGeneratorAPI = {
   renderCity,
   renderBlockInfo,
   buildCityText,
+  buildScenery,
   CANVAS_SIZE,
   CX,
   CY,

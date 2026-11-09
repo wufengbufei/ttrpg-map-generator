@@ -95,7 +95,7 @@
 <div class="site-header">
   <a class="back-link" href="../../index.html">← 返回首页</a>
   <h1>城市生成器</h1>
-  <p>Voronoi 街区 · 放射主干道 · 城墙城门 · 中央广场与地标</p>
+  <p>Voronoi 街区 · 放射主干道 · 城墙城门 · 街区名与指北针</p>
 </div>
 
 <div class="city-wrap">
@@ -115,7 +115,8 @@
       <input type="range" id="subdivision" min="1" max="10" value="5">
     </div>
     <div class="field">
-      <label class="check-row"><input type="checkbox" id="wallToggle" checked> 生成城墙（含城门）</label>
+      <label class="check-row"><input type="checkbox" id="wallToggle" checked> 生成城墙（含城门与圆塔）</label>
+      <p style="margin:8px 0 0;font-size:0.8rem;color:var(--ink-soft)">城外种地由种子决定，约一半种子会带水面。</p>
     </div>
 
     <div class="field">
@@ -136,7 +137,7 @@
 
     <div class="legend">
       <span><i style="background:#c9a97a"></i>道路</span>
-      <span><i style="background:#b98f63"></i>民居屋顶</span>
+      <span><i style="background:#7a7670"></i>民居屋顶</span>
       <span><i style="background:#8d8396"></i>大教堂</span>
       <span><i style="background:#6f5846"></i>领主城堡</span>
       <span><i style="background:#dfcd9d"></i>中央广场</span>
@@ -151,7 +152,7 @@
   </div>
 </div>
 
-<footer>街区编号可对照 PNG 与 TXT 清单，方便跑团时口述城市方位 · 本地生成，不上传任何数据</footer>
+<footer>街区名可对照 PNG 与 TXT 清单 · 本地生成，不上传任何数据</footer>
 
 <script src="../../assets/ui.js"></script>
 <script src="city.js"></script>
